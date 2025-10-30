@@ -2,6 +2,31 @@
 
 All notable changes to the Ravencolonial EDMC Plugin will be documented in this file.
 
+## [1.3.0] - 2025-10-30
+
+### Added
+- **Localization Support (l10n)**: Plugin UI now supports multiple languages
+  - Framework in place for translations (English template provided in `L10n/en.template`)
+  - UI refreshes automatically when user changes language in EDMC settings
+  - All user-facing strings wrapped with translation function
+- **Async Error Display**: API errors now appear in EDMC's status bar via `plug.show_error()`
+  - Better visibility of connection issues
+  - Non-blocking error notifications
+- **Improved Thread Management**: Worker thread now properly joins on shutdown (recommended by EDMC docs)
+
+### Changed
+- Updated to use `config.get_str()` instead of deprecated `config.get()`
+- All button labels and dialog text now localizable
+- Error messages now use proper localization framework
+- Removed settings page - plugin works automatically without configuration
+
+### Removed
+- `plugin_prefs()` function - no user-configurable settings needed
+
+### Fixed
+- Thread shutdown now waits for worker to finish (5 second timeout)
+- Better compliance with EDMC plugin API best practices
+
 ## [1.2.0] - 2025-10-29
 
 ### Added

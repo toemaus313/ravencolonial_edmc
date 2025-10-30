@@ -1,0 +1,45 @@
+/* Ravencolonial EDMC Plugin - English Localization Template */
+
+/* Main UI */
+"Ravencolonial: Ready" = "Ravencolonial: Ready";
+"🚧 Create Project" = "🚧 Create Project";
+"🌐 Open Build Page" = "🌐 Open Build Page";
+"Create Project (Dock First)" = "Create Project (Dock First)";
+"Create Project (Dock at Construction Ship)" = "Create Project (Dock at Construction Ship)";
+"Create Project" = "Create Project";
+
+/* Dialog Title and Labels */
+"New Colonization Project" = "New Colonization Project";
+"System:" = "System:";
+"Station:" = "Station:";
+"Unknown" = "Unknown";
+"Construction Type:" = "Construction Type:";
+"Model:" = "Model:";
+"Project Name:" = "Project Name:";
+"Body:" = "Body:";
+"Architect:" = "Architect:";
+"Pre-planned Site:" = "Pre-planned Site:";
+"<None - Create New>" = "<None - Create New>";
+"This is the primary port in the system" = "This is the primary port in the system";
+"Notes:" = "Notes:";
+"Discord Link:" = "Discord Link:";
+
+/* Buttons */
+"Create" = "Create";
+"Cancel" = "Cancel";
+
+/* Messages */
+"Error" = "Error";
+"Success" = "Success";
+"Please select a construction type" = "Please select a construction type";
+"Please select a model" = "Please select a model";
+"Please enter a project name" = "Please enter a project name";
+"Market ID not available. Please re-dock at the construction ship." = "Market ID not available. Please re-dock at the construction ship.";
+"System name not available. Please re-dock or restart EDMC while in-game." = "System name not available. Please re-dock or restart EDMC while in-game.";
+"System address not available. Please re-dock or restart EDMC while in-game." = "System address not available. Please re-dock or restart EDMC while in-game.";
+"Invalid construction type/model selected" = "Invalid construction type/model selected";
+"Project created successfully!" = "Project created successfully!";
+"Failed to open dialog:" = "Failed to open dialog:";
+"Ravencolonial API error:" = "Ravencolonial API error:";
+
+/* Preferences - Removed (no settings page needed) */

@@ -41,8 +41,8 @@ This plugin provides the same colonization tracking functionality as SRVSurvey, 
      - **Mac**: `~/Library/Application Support/EDMarketConnector/plugins`
      - **Linux**: `~/.local/share/EDMarketConnector/plugins`
    
-   - Create a folder named `Ravencolonial` in the plugins directory
-   - Copy `load.py` into the `Ravencolonial` folder
+   - Create a folder named `Ravencolonial-EDMC` in the plugins directory
+   - Copy `load.py` into the `Ravencolonial-EDMC` folder
 
 3. **Restart EDMC**
    - Close and restart EDMC
@@ -85,109 +85,12 @@ When docked at a **Construction ship**, you can create a new colonization projec
 4. Click **"Create"** to submit the project to Ravencolonial
 5. The project page will automatically open in your browser
 
-## How It Works
-
-The plugin monitors Elite Dangerous journal files for these events:
-
-- **Docked**: Tracks when you dock at construction sites
-- **CargoDepot**: Detects cargo deliveries to construction depots
-- **Market**: Monitors market interactions
-- **Cargo**: Tracks your cargo hold contents
-- **Location**: Updates your current system location
-
-When you deliver cargo to a construction depot, the plugin:
-1. Detects the delivery from the journal
-2. Identifies the active colonization project
-3. Sends the contribution data to Ravencolonial's API
-4. Displays confirmation in EDMC
-
-## API Integration
-
-This plugin communicates with Ravencolonial's API:
-
-- **Base URL**: `https://ravencolonial100-awcbdvabgze4c5cq.canadacentral-01.azurewebsites.net`
-- **Endpoints Used**:
-  - `GET /api/system/{systemAddress}/{marketId}` - Get project details
-  - `POST /api/project/{buildId}/contribute/{cmdr}` - Submit cargo contributions
-  - `GET /api/cmdr/{cmdr}` - Get commander's projects
-
-All API calls are made asynchronously in a background thread to avoid blocking EDMC or the game.
-
-## Troubleshooting
-
-### Plugin Not Appearing in EDMC
-
-- Ensure the plugin folder is named exactly `Ravencolonial`
-- Verify `load.py` is in the correct location
-- Check EDMC logs for errors: `%TEMP%\EDMarketConnector\EDMarketConnector.log`
-
-### Deliveries Not Being Tracked
-
-- Ensure you're connected to the internet
-- Check that you're docked at a valid construction site
-- Verify the project exists on ravencolonial.com
-- Look for error messages in EDMC logs
-
-### Status Shows "Not Connected"
-
-- Check your internet connection
-- Verify Ravencolonial API is online
-- Restart EDMC to reset the connection
-
-## Development
-
-### Requirements
-
-```
-requests>=2.31.0
-```
-
-### Testing
-
-To test the plugin during development:
-
-1. Copy the plugin to your EDMC plugins folder
-2. Enable EDMC debug logging
-3. Monitor `EDMarketConnector.log` for plugin output
-4. Use test journal events to simulate game activity
-
-### Contributing
-
-Contributions are welcome! Please:
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Submit a pull request
-
-## Comparison with SRVSurvey
-
-| Feature | SRVSurvey | This Plugin |
-|---------|-----------|-------------|
-| Colonization Tracking | ✅ | ✅ |
-| Create Projects | ✅ | ✅ |
-| EDMC Integration | ❌ | ✅ |
-| Overlay UI | ✅ | ❌ |
-| Bio Scanning | ✅ | ❌ |
-| Guardian Sites | ✅ | ❌ |
-| Always Running | ⚠️ Required | ❌ Optional |
-
-**Use This Plugin If**:
-- You already use EDMC for other purposes
-- You only need colonization tracking
-- You want a lightweight solution
-- You don't need SRVSurvey's overlay features
-
-**Use SRVSurvey If**:
-- You need bio scanning or Guardian site features
-- You want in-game overlay assistance
-- You prefer a comprehensive exploration tool
-
 ## Credits
 
-- **SRVSurvey**: Original colonization tracking implementation by [njthomson](https://github.com/njthomson/SrvSurvey)
-- **Ravencolonial**: Colonization tracking platform also by njthomson
+- **SRVSurvey**: Original colonization tracking implementation by [grinning2001](https://github.com/njthomson/SrvSurvey)
+- **Ravencolonial**: Colonization tracking platform also by [grinning2001](https://ravencolonial.com)
 - **EDMC**: Elite Dangerous Market Connector by [EDCD](https://github.com/EDCD/EDMarketConnector)
+- **This half-assed plugin**: Me, [toemaus313 aka CMDR Dirk Pitt13](https://github.com/toemaus313/Ravencolonial-EDMC)
 
 ## License
 
@@ -196,6 +99,7 @@ This plugin is licensed under the GNU General Public License v2.0 or later, cons
 ## Support
 
 - **Issues**: [GitHub Issues](https://github.com/[your-username]/Ravencolonial-EDMC/issues)
+- **Discord**: @toemaus313
 - **EDMC Wiki**: [Plugin Documentation](https://github.com/EDCD/EDMarketConnector/wiki/Plugins)
 - **Ravencolonial**: [Website](https://ravencolonial.com)
 - **SRVSurvey Discord**: [Guardian Science Corps](https://discord.gg/GJjTFa9fsz)
