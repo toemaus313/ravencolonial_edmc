@@ -210,15 +210,14 @@ class RavencolonialPlugin:
     def update_create_button(self):
         """Enable/disable create button based on docking status"""
         if self.create_button:
-            if self.is_docked and self.current_market_id and self.is_construction_ship:
+            # TESTING: Removed construction ship requirement
+            if self.is_docked and self.current_market_id:
                 self.create_button['state'] = tk.NORMAL
                 self.create_button['text'] = "🚧 Create Project"
             else:
                 self.create_button['state'] = tk.DISABLED
                 if not self.is_docked:
                     self.create_button['text'] = "Create Project (Dock First)"
-                elif not self.is_construction_ship:
-                    self.create_button['text'] = "Create Project (Need Construction Ship)"
                 else:
                     self.create_button['text'] = "Create Project"
 
