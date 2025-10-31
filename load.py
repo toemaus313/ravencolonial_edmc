@@ -17,7 +17,6 @@ import json
 import urllib.parse
 import logging
 import os
-<<<<<<< HEAD
 import functools
 import l10n
 import plug
@@ -25,12 +24,6 @@ import plug
 # Plugin metadata
 plugin_name = os.path.basename(os.path.dirname(__file__))
 plugin_version = "1.3.0"
-=======
-
-# Plugin metadata
-plugin_name = os.path.basename(os.path.dirname(__file__))
-plugin_version = "1.2.0"
->>>>>>> 4ffdb1270ecabafa23c3c449ed9e7a805b5e3dcf
 
 # Setup logging
 logger = logging.getLogger(f'{appname}.{plugin_name}')
@@ -47,12 +40,9 @@ if not logger.hasHandlers():
     logger_formatter.default_msec_format = '%s.%03d'
     logger_channel.setFormatter(logger_formatter)
     logger.addHandler(logger_channel)
-<<<<<<< HEAD
 
 # Setup localization
 plugin_tl = functools.partial(l10n.translations.tl, context=__file__)
-=======
->>>>>>> 4ffdb1270ecabafa23c3c449ed9e7a805b5e3dcf
 
 # Global state
 this = None
@@ -213,17 +203,10 @@ class RavencolonialPlugin:
             
             # Try different config methods
             try:
-<<<<<<< HEAD
                 journal_dir = config.get_str('journaldir')
                 logger.debug(f"Got journal directory from config: {journal_dir}")
             except Exception as e:
                 logger.debug(f"Error with config.get_str('journaldir'): {e}")
-=======
-                journal_dir = config.get('journaldir')
-                logger.debug(f"Got journal directory from config: {journal_dir}")
-            except Exception as e:
-                logger.debug(f"Error with config.get('journaldir'): {e}")
->>>>>>> 4ffdb1270ecabafa23c3c449ed9e7a805b5e3dcf
             
             # If that didn't work, try the default Elite Dangerous location
             if not journal_dir:
@@ -558,7 +541,6 @@ class RavencolonialPlugin:
             # Check for existing project
             if self.current_system_address:
                 existing_project = self.check_existing_project(self.current_system_address, self.current_market_id)
-<<<<<<< HEAD
             else:
                 logger.warning("Could not get system_address, unable to check for existing project")
                 existing_project = None
@@ -625,74 +607,6 @@ class RavencolonialPlugin:
                 self.create_button['text'] = plugin_tl("Create Project (Dock at Construction Ship)")
             else:
                 self.create_button['text'] = plugin_tl("Create Project")
-=======
-            else:
-                logger.warning("Could not get system_address, unable to check for existing project")
-                existing_project = None
-            
-            if existing_project:
-                # Project exists - change button to open build page
-                build_id = existing_project.get('buildId', '')
-                build_name = existing_project.get('buildName', 'Unknown')
-                logger.info(f"Found existing project: {build_name} ({build_id})")
-                
-                self.create_button['state'] = tk.NORMAL
-                self.create_button['text'] = "🌐 Open Build Page"
-                # Change button command to open project link
-                self.create_button['command'] = lambda: open_project_link()
-                
-                if self.project_link_label:
-                    link_text = f"{build_name}"
-                    self.project_link_label['text'] = link_text
-                    self.project_link_label['fg'] = 'blue'
-                    self.project_link_label['cursor'] = 'hand2'
-                
-                # Store build_id for click handler
-                self.current_build_id = build_id
-            else:
-                # No project exists - fetch body data then enable button
-                logger.info("No existing project found")
-                
-                # Clear project link
-                if self.project_link_label:
-                    self.project_link_label['text'] = ""
-                    self.current_build_id = None
-                
-                # Fetch body data in background for future use
-                if self.current_system and not hasattr(self, '_bodies_fetched'):
-                    logger.debug("Pre-fetching body data for Create dialog")
-                    # Get system address from journal if needed
-                    if not self.current_system_address:
-                        self.current_system_address = self.get_system_address_from_journal()
-                    self._bodies_fetched = True
-                
-                # Enable create button and restore original command
-                logger.debug("Enabling Create Project button")
-                self.create_button['state'] = tk.NORMAL
-                self.create_button['text'] = "🚧 Create Project"
-                # Restore original command to open create dialog
-                if self.frame:
-                    self.create_button['command'] = lambda: open_create_dialog(self.frame.master)
-        else:
-            # Not at construction ship - disable button and restore original command
-            logger.debug("Disabling Create Project button")
-            self.create_button['state'] = tk.DISABLED
-            
-            # Restore original command to open create dialog
-            if self.frame:
-                self.create_button['command'] = lambda: open_create_dialog(self.frame.master)
-            
-            if self.project_link_label:
-                self.project_link_label['text'] = ""
-                self.current_build_id = None
-            
-            if not self.is_docked:
-                self.create_button['text'] = "Create Project (Dock First)"
-            elif not self.is_construction_ship:
-                self.create_button['text'] = "Create Project (Dock at Construction Ship)"
-            else:
-                self.create_button['text'] = "Create Project"
->>>>>>> 4ffdb1270ecabafa23c3c449ed9e7a805b5e3dcf
 
 
 class CreateProjectDialog:
@@ -941,11 +855,7 @@ class CreateProjectDialog:
         }
         
         # First dropdown: Construction Type (Tier + Category)
-<<<<<<< HEAD
         ttk.Label(main_frame, text=plugin_tl("Construction Type:")).grid(row=row, column=0, sticky=tk.W, pady=2)
-=======
-        ttk.Label(main_frame, text="Construction Type:").grid(row=row, column=0, sticky=tk.W, pady=2)
->>>>>>> 4ffdb1270ecabafa23c3c449ed9e7a805b5e3dcf
         self.category_var = tk.StringVar()
         self.category_combo = ttk.Combobox(main_frame, textvariable=self.category_var, 
                                           state='readonly', width=40)
@@ -955,11 +865,7 @@ class CreateProjectDialog:
         row += 1
         
         # Second dropdown: Model/Variant
-<<<<<<< HEAD
         ttk.Label(main_frame, text=plugin_tl("Model:")).grid(row=row, column=0, sticky=tk.W, pady=2)
-=======
-        ttk.Label(main_frame, text="Model:").grid(row=row, column=0, sticky=tk.W, pady=2)
->>>>>>> 4ffdb1270ecabafa23c3c449ed9e7a805b5e3dcf
         self.model_var = tk.StringVar()
         self.model_combo = ttk.Combobox(main_frame, textvariable=self.model_var, 
                                        state='readonly', width=40)
@@ -974,11 +880,7 @@ class CreateProjectDialog:
         row += 1
         
         # Body Selection
-<<<<<<< HEAD
         ttk.Label(main_frame, text=plugin_tl("Body:")).grid(row=row, column=0, sticky=tk.W, pady=2)
-=======
-        ttk.Label(main_frame, text="Body:").grid(row=row, column=0, sticky=tk.W, pady=2)
->>>>>>> 4ffdb1270ecabafa23c3c449ed9e7a805b5e3dcf
         self.body_var = tk.StringVar()
         self.body_combo = ttk.Combobox(main_frame, textvariable=self.body_var, width=40)
         # Populate with all bodies in the system
@@ -1028,13 +930,8 @@ class CreateProjectDialog:
             self.site_var = tk.StringVar()
             self.site_combo = ttk.Combobox(main_frame, textvariable=self.site_var, 
                                           state='readonly', width=40)
-<<<<<<< HEAD
             site_options = [plugin_tl("<None - Create New>")]
             self.site_id_map = {plugin_tl("<None - Create New>"): None}
-=======
-            site_options = ["<None - Create New>"]
-            self.site_id_map = {"<None - Create New>": None}
->>>>>>> 4ffdb1270ecabafa23c3c449ed9e7a805b5e3dcf
             self.site_data_map = {"<None - Create New>": None}  # Store full site data
             for site in self.system_sites:
                 site_name = site.get('name', 'Unknown')
@@ -1139,19 +1036,11 @@ class CreateProjectDialog:
         """Handle create button click"""
         # Validate inputs
         if not self.category_var.get():
-<<<<<<< HEAD
             messagebox.showerror(plugin_tl("Error"), plugin_tl("Please select a construction type"))
             return
         
         if not self.model_var.get():
             messagebox.showerror(plugin_tl("Error"), plugin_tl("Please select a model"))
-=======
-            messagebox.showerror("Error", "Please select a construction type")
-            return
-        
-        if not self.model_var.get():
-            messagebox.showerror("Error", "Please select a model")
->>>>>>> 4ffdb1270ecabafa23c3c449ed9e7a805b5e3dcf
             return
         
         if not self.name_var.get():
@@ -1160,19 +1049,11 @@ class CreateProjectDialog:
         
         # Validate required plugin data
         if not self.plugin.current_market_id:
-<<<<<<< HEAD
             messagebox.showerror(plugin_tl("Error"), plugin_tl("Market ID not available. Please re-dock at the construction ship."))
             return
         
         if not self.plugin.current_system:
             messagebox.showerror(plugin_tl("Error"), plugin_tl("System name not available. Please re-dock or restart EDMC while in-game."))
-=======
-            messagebox.showerror("Error", "Market ID not available. Please re-dock at the construction ship.")
-            return
-        
-        if not self.plugin.current_system:
-            messagebox.showerror("Error", "System name not available. Please re-dock or restart EDMC while in-game.")
->>>>>>> 4ffdb1270ecabafa23c3c449ed9e7a805b5e3dcf
             return
         
         # Validate system address
@@ -1181,11 +1062,7 @@ class CreateProjectDialog:
             self.plugin.current_system_address = self.plugin.get_system_address_from_journal()
             
             if not self.plugin.current_system_address:
-<<<<<<< HEAD
                 messagebox.showerror(plugin_tl("Error"), plugin_tl("System address not available. Please re-dock or restart EDMC while in-game."))
-=======
-                messagebox.showerror("Error", "System address not available. Please re-dock or restart EDMC while in-game.")
->>>>>>> 4ffdb1270ecabafa23c3c449ed9e7a805b5e3dcf
                 return
         
         # Get build type API code from category + model selection
@@ -1194,11 +1071,7 @@ class CreateProjectDialog:
         build_type_api = self.construction_types.get(category, {}).get(model)
         
         if not build_type_api:
-<<<<<<< HEAD
             messagebox.showerror(plugin_tl("Error"), plugin_tl("Invalid construction type/model selected"))
-=======
-            messagebox.showerror("Error", "Invalid construction type/model selected")
->>>>>>> 4ffdb1270ecabafa23c3c449ed9e7a805b5e3dcf
             return
         
         # Extract commodities from construction depot data
@@ -1358,11 +1231,7 @@ def plugin_app(parent: tk.Frame) -> tk.Frame:
     this.status_label.pack(side=tk.LEFT, padx=5)
     
     # Project link label (shows when project exists)
-<<<<<<< HEAD
     this.project_link_label = tk.Label(frame, text="", cursor="hand2", fg='blue')
-=======
-    this.project_link_label = tk.Label(frame, text="", fg="blue", cursor="hand2")
->>>>>>> 4ffdb1270ecabafa23c3c449ed9e7a805b5e3dcf
     this.project_link_label.pack(side=tk.LEFT, padx=5)
     this.project_link_label.bind("<Button-1>", lambda e: open_project_link())
     this.current_build_id = None

@@ -44,3 +44,6 @@ desktop.ini
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Distribution
+*.zip
