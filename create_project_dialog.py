@@ -424,7 +424,16 @@ class CreateProjectDialog:
         
         # Architect Name
         ttk.Label(main_frame, text=plugin_tl("Architect:")).grid(row=row, column=0, sticky=tk.W, pady=2)
-        self.architect_var = tk.StringVar(value=self.plugin.cmdr_name or "")
+        
+        # Try to get architect from system API, otherwise use CMDR name
+        architect_name = self.plugin.cmdr_name or ""
+        if self.plugin.current_system_address:
+            system_architect = self.plugin.get_system_architect(self.plugin.current_system_address)
+            if system_architect:
+                architect_name = system_architect
+                logger.info(f"Found system architect: {system_architect}")
+        
+        self.architect_var = tk.StringVar(value=architect_name)
         self.architect_entry = ttk.Entry(main_frame, textvariable=self.architect_var, width=42)
         self.architect_entry.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=2)
         row += 1

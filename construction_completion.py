@@ -6,7 +6,6 @@ from Elite Dangerous journal entries, following the same logic as SrvSurvey.
 """
 
 import logging
-import urllib.parse
 import plug
 from typing import Dict, Any, Optional
 
@@ -66,22 +65,7 @@ class ConstructionCompletionHandler:
         :param build_id: The project build ID
         :return: True if successful, False otherwise
         """
-        try:
-            url = f"{self.api_client.api_base}/api/project/{urllib.parse.quote(build_id)}/complete"
-            logger.debug(f"Mark complete URL: {url}")
-            
-            response = self.api_client.session.post(url, timeout=10)
-            logger.debug(f"Mark complete response status: {response.status_code}")
-            logger.debug(f"Mark complete response body: {response.text}")
-            response.raise_for_status()
-            
-            logger.info(f"Successfully marked project {build_id} as complete")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Failed to mark project complete: {e}")
-            logger.error(f"Exception details: {type(e).__name__}: {str(e)}")
-            return False
+        return self.api_client.mark_project_complete(build_id)
     
     def mark_project_complete_async(self, build_id: str):
         """
