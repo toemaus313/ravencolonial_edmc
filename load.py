@@ -22,6 +22,7 @@ import l10n
 import plug
 import create_project_dialog
 import webbrowser
+import construction_completion
 
 # Plugin metadata
 plugin_name = os.path.basename(os.path.dirname(__file__))
@@ -98,6 +99,9 @@ class RavencolonialPlugin:
         
         # Build types cache
         self.build_types: List[Dict] = []
+        
+        # Construction completion handler
+        self.completion_handler = construction_completion.ConstructionCompletionHandler(self)
         
     def _api_worker(self):
         """Background worker thread for API calls"""
@@ -437,6 +441,11 @@ class RavencolonialPlugin:
         # Store the full construction depot data for project creation
         self.construction_depot_data = entry
         logger.info(f"Captured ColonisationConstructionDepot data for {self.current_station}")
+        
+        # Check if construction is complete and handle it
+        if self.completion_handler.handle_construction_complete(entry):
+            # Construction was complete and handled, skip supply updates
+            return
         
         # Calculate current needed amounts (RequiredAmount - ProvidedAmount)
         resources = entry.get('ResourcesRequired', [])
