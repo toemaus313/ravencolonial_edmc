@@ -20,6 +20,8 @@ import os
 import functools
 import l10n
 import plug
+import create_project_dialog
+import webbrowser
 
 # Plugin metadata
 plugin_name = os.path.basename(os.path.dirname(__file__))
@@ -43,6 +45,9 @@ if not logger.hasHandlers():
 
 # Setup localization
 plugin_tl = functools.partial(l10n.translations.tl, context=__file__)
+
+# Set translation function for dialog module
+create_project_dialog.set_translation_function(plugin_tl)
 
 # Global state
 this = None
@@ -180,13 +185,31 @@ class RavencolonialPlugin:
     
     def get_system_sites(self, system_name: str) -> List[Dict]:
         """Get available construction sites in a system"""
+        logger.debug(f"get_system_sites called for system: {system_name}")
+        
+        # We need the system address (ID64) for the v2 API
+        if not self.current_system_address:
+            logger.debug("No system address available, trying to get from journal")
+            self.current_system_address = self.get_system_address_from_journal()
+        
+        if not self.current_system_address:
+            logger.error("Cannot get system sites - no system address available")
+            return []
+        
         try:
-            url = f"{self.api_base}/api/v2/system/{urllib.parse.quote(system_name)}/sites"
+            url = f"{self.api_base}/api/v2/system/{self.current_system_address}/sites"
+            logger.debug(f"Fetching sites from URL: {url}")
             response = self.session.get(url, timeout=10)
+            logger.debug(f"Sites API response status: {response.status_code}")
+            if response.status_code != 200:
+                logger.debug(f"Sites API response body: {response.text}")
             response.raise_for_status()
-            return response.json()
+            sites = response.json()
+            logger.debug(f"Successfully fetched {len(sites)} sites: {sites}")
+            return sites
         except Exception as e:
             logger.error(f"Failed to get system sites: {e}")
+            logger.error(f"Exception details: {type(e).__name__}: {str(e)}")
             return []
     
     def get_system_address_from_journal(self) -> Optional[int]:
@@ -609,561 +632,6 @@ class RavencolonialPlugin:
                 self.create_button['text'] = plugin_tl("Create Project")
 
 
-class CreateProjectDialog:
-    """Dialog for creating a new colonization project"""
-    
-    def __init__(self, parent, plugin: RavencolonialPlugin):
-        self.plugin = plugin
-        self.result = None
-        
-        # Create top-level window
-        self.dialog = tk.Toplevel(parent)
-        self.dialog.title("Create Colonization Project")
-        self.dialog.geometry("550x650")
-        self.dialog.transient(parent)
-        self.dialog.grab_set()
-        
-        # Fetch available system sites and bodies
-        self.system_sites = []
-        self.system_bodies = []
-        if plugin.current_system:
-            self.system_sites = plugin.get_system_sites(plugin.current_system)
-        
-        # Get system address - try from plugin state first, then from journal
-        system_address = plugin.current_system_address
-        if not system_address:
-            logger.debug("No system_address in plugin state, checking journal")
-            system_address = plugin.get_system_address_from_journal()
-            if system_address:
-                logger.debug(f"Got system_address from journal: {system_address}")
-                # Store it for future use
-                plugin.current_system_address = system_address
-        
-        # Fetch bodies from Ravencolonial using system address
-        if system_address:
-            logger.debug(f"Fetching bodies from Ravencolonial for system address: {system_address}")
-            self.system_bodies = plugin.get_system_bodies(system_address)
-            logger.debug(f"Received {len(self.system_bodies)} bodies from Ravencolonial")
-        else:
-            logger.debug("No system address available, cannot fetch bodies")
-        
-        self._create_widgets()
-        self._populate_fields()
-        
-    def _create_widgets(self):
-        """Create dialog widgets"""
-        main_frame = ttk.Frame(self.dialog, padding="10")
-        main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        
-        row = 0
-        
-        # Title
-        ttk.Label(main_frame, text=plugin_tl("New Colonization Project"), 
-                 font=('TkDefaultFont', 12, 'bold')).grid(row=row, column=0, columnspan=2, pady=(0, 10))
-        row += 1
-        
-        # Location info (read-only)
-        ttk.Label(main_frame, text=plugin_tl("System:")).grid(row=row, column=0, sticky=tk.W, pady=2)
-        self.system_label = ttk.Label(main_frame, text=self.plugin.current_system or plugin_tl("Unknown"))
-        self.system_label.grid(row=row, column=1, sticky=tk.W, pady=2)
-        row += 1
-        
-        ttk.Label(main_frame, text=plugin_tl("Station:")).grid(row=row, column=0, sticky=tk.W, pady=2)
-        self.station_label = ttk.Label(main_frame, text=self.plugin.current_station or plugin_tl("Unknown"))
-        self.station_label.grid(row=row, column=1, sticky=tk.W, pady=2)
-        row += 1
-        
-        ttk.Separator(main_frame, orient=tk.HORIZONTAL).grid(row=row, column=0, columnspan=2, 
-                                                             sticky=(tk.W, tk.E), pady=10)
-        row += 1
-        
-        # Construction Type (two-dropdown system like SRVSurvey)
-        # Hierarchical structure: Tier/Category -> Model -> API Code
-        self.construction_types = {
-            # Tier 3 Starports
-            "Tier 3: Ocellus Starport": {"Ocellus": "ocellus"},
-            "Tier 3: Orbis Starport": {
-                "Apollo": "apollo",
-                "Artemis": "artemis"
-            },
-            "Tier 3: Large Planetary Port": {
-                "Aphrodite": "aphrodite",
-                "Hera": "hera",
-                "Poseidon": "poseidon",
-                "Zeus": "zeus"
-            },
-            # Tier 2 Starports
-            "Tier 2: Coriolis Starport": {
-                "No truss": "no_truss",
-                "Dual truss": "dual_truss",
-                "Quad truss": "quad_truss"
-            },
-            "Tier 2: Asteroid Starport": {"Asteroid": "asteroid"},
-            # Tier 1 Outposts
-            "Tier 1: Civilian Outpost": {"Vesta": "vesta"},
-            "Tier 1: Commercial Outpost": {"Plutus": "plutus"},
-            "Tier 1: Industrial Outpost": {"Vulcan": "vulcan"},
-            "Tier 1: Military Outpost": {"Nemesis": "nemesis"},
-            "Tier 1: Scientific Outpost": {"Prometheus": "prometheus"},
-            "Tier 1: Pirate Outpost": {"Dysnomia": "dysnomia"},
-            # Tier 1 Small Installations
-            "Tier 1: Satellite Installation": {
-                "Angelia": "angelia",
-                "Eirene": "eirene",
-                "Hermes": "hermes"
-            },
-            "Tier 1: Communication Installation": {
-                "Aletheia": "aletheia",
-                "Pistis": "pistis",
-                "Soter": "soter"
-            },
-            "Tier 1: Space Farm": {"Demeter": "demeter"},
-            "Tier 1: Pirate Base Installation": {
-                "Apate": "apate",
-                "Laverna": "laverna"
-            },
-            "Tier 1: Mining/Industrial Installation": {
-                "Euthenia": "euthenia",
-                "Phorcys": "phorcys"
-            },
-            "Tier 1: Relay Installation": {
-                "Enodia": "enodia",
-                "Ichnaea": "ichnaea"
-            },
-            # Tier 1 Surface Outposts
-            "Tier 1: Civilian Surface Outpost": {
-                "Angios": "angios",
-                "Clotho": "clotho",
-                "Decima": "decima",
-                "Hestia": "hestia",
-                "Lachesis": "lachesis",
-                "Nona": "nona"
-            },
-            "Tier 1: Industrial Surface Outpost": {
-                "Bis": "bis",
-                "Hephaestus": "hephaestus",
-                "Meitis": "meitis",
-                "Opis": "opis",
-                "Ponos": "ponos",
-                "Tethys": "tethys"
-            },
-            "Tier 1: Scientific Surface Outpost": {
-                "Ananke": "ananke",
-                "Antevoerta": "antevoerta",
-                "Fauna": "fauna",
-                "Necessitas": "necessitas",
-                "Porrima": "porrima",
-                "Providentia": "providentia"
-            },
-            # Tier 1 Settlements
-            "Tier 1: Agriculture Settlement: Small": {"Consus": "consus"},
-            "Tier 1: Agriculture Settlement: Medium": {
-                "Annona": "annona",
-                "Picumnus": "picumnus"
-            },
-            "Tier 1: Mining Settlement: Small": {"Ourea": "ourea"},
-            "Tier 1: Mining Settlement: Medium": {
-                "Mantus": "mantus",
-                "Orcus": "orcus"
-            },
-            "Tier 1: Industrial Settlement: Small": {"Pontus": "pontus"},
-            "Tier 1: Industrial Settlement: Medium": {
-                "Meteope": "meteope",
-                "Minthe": "minthe",
-                "Palici": "palici"
-            },
-            "Tier 1: Military Settlement: Small": {"Mars": "mars"},
-            "Tier 1: Military Settlement: Medium": {
-                "Bellona": "bellona",
-                "Enyo": "enyo",
-                "Polemos": "polemos"
-            },
-            # Tier 2 Installations
-            "Tier 2: Military Installation": {
-                "Aesculor": "aesculor",
-                "Vacuna": "vacuna"
-            },
-            "Tier 2: Security Installation": {
-                "Dicaeosyne": "dicaeosyne",
-                "Eupraxia": "eupraxia",
-                "Nomos": "nomos",
-                "Poena": "poena"
-            },
-            "Tier 2: Government Installation": {"Harmonia": "harmonia"},
-            "Tier 2: Medical Installation": {
-                "Asclepius": "asclepius",
-                "Eupraxia": "eupraxia"
-            },
-            "Tier 2: Research Installation": {
-                "Astraeus": "astraeus",
-                "Coeus": "coeus",
-                "Dione": "dione",
-                "Dodona": "dodona"
-            },
-            "Tier 2: Tourist Installation": {
-                "Hedone": "hedone",
-                "Opsora": "opsora",
-                "Pasithea": "pasithea"
-            },
-            "Tier 2: Space Bar Installation": {
-                "Bacchus": "bacchus",
-                "Dionysus": "dionysus"
-            },
-            # Tier 2 Settlements
-            "Tier 2: Agriculture Settlement: Large": {
-                "Ceres": "ceres",
-                "Fornax": "fornax"
-            },
-            "Tier 2: Mining Settlement: Large": {
-                "Aerecura": "aerecura",
-                "Erebus": "erebus"
-            },
-            "Tier 2: Military Settlement: Large": {"Gaea": "gaea"},
-            "Tier 2: Industrial Settlement: Large": {"Minerva": "minerva"},
-            "Tier 2: Bio Settlement: Small": {"Phoebe": "phoebe"},
-            "Tier 2: Bio Settlement: Medium": {
-                "Asteris": "asteris",
-                "Caerus": "caerus"
-            },
-            "Tier 2: Bio Settlement: Large": {"Chronos": "chronos"},
-            "Tier 2: Tourist Settlement: Small": {"Aergia": "aergia"},
-            "Tier 2: Tourist Settlement: Medium": {
-                "Comus": "comus",
-                "Gelos": "gelos"
-            },
-            "Tier 2: Tourist Settlement: Large": {"Fulgora": "fulgora"},
-            # Tier 2 Hubs
-            "Tier 2: Extraction Hub": {"Tartarus": "tartarus"},
-            "Tier 2: Civilian Hub": {"Aegle": "aegle"},
-            "Tier 2: Exploration Hub": {"Telus": "telus"},
-            "Tier 2: Outpost Hub": {"Io": "io"},
-            "Tier 2: Scientific Hub": {
-                "Athena": "athena",
-                "Caelus": "caelus"
-            },
-            "Tier 2: Military Hub": {
-                "Alala": "alala",
-                "Ares": "ares"
-            },
-            "Tier 2: Refinery Hub": {"Refinery": "refinery"},
-            "Tier 2: High Tech Hub": {"Janus": "janus"},
-            "Tier 2: Industrial Hub": {
-                "Eunocus": "eunocus",
-                "Molae": "molae",
-                "Tellus": "tellus"
-            },
-        }
-        
-        # First dropdown: Construction Type (Tier + Category)
-        ttk.Label(main_frame, text=plugin_tl("Construction Type:")).grid(row=row, column=0, sticky=tk.W, pady=2)
-        self.category_var = tk.StringVar()
-        self.category_combo = ttk.Combobox(main_frame, textvariable=self.category_var, 
-                                          state='readonly', width=40)
-        self.category_combo['values'] = list(self.construction_types.keys())
-        self.category_combo.bind('<<ComboboxSelected>>', self._on_category_selected)
-        self.category_combo.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=2)
-        row += 1
-        
-        # Second dropdown: Model/Variant
-        ttk.Label(main_frame, text=plugin_tl("Model:")).grid(row=row, column=0, sticky=tk.W, pady=2)
-        self.model_var = tk.StringVar()
-        self.model_combo = ttk.Combobox(main_frame, textvariable=self.model_var, 
-                                       state='readonly', width=40)
-        self.model_combo.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=2)
-        row += 1
-        
-        # Project Name
-        ttk.Label(main_frame, text=plugin_tl("Project Name:")).grid(row=row, column=0, sticky=tk.W, pady=2)
-        self.name_var = tk.StringVar()
-        self.name_entry = ttk.Entry(main_frame, textvariable=self.name_var, width=42)
-        self.name_entry.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=2)
-        row += 1
-        
-        # Body Selection
-        ttk.Label(main_frame, text=plugin_tl("Body:")).grid(row=row, column=0, sticky=tk.W, pady=2)
-        self.body_var = tk.StringVar()
-        self.body_combo = ttk.Combobox(main_frame, textvariable=self.body_var, width=40)
-        # Populate with all bodies in the system
-        body_options = []
-        logger.debug(f"Creating body dropdown, have {len(self.system_bodies)} bodies")
-        if self.system_bodies:
-            for body in self.system_bodies:
-                body_name = body.get('name', '')
-                body_type = body.get('type', '')
-                logger.debug(f"Processing body: name={body_name}, type={body_type}")
-                if body_name:
-                    # Format like SRVSurvey: "Sifi XS-U d2-39 A (Blue-White Star)"
-                    display_name = f"{body_name} ({body_type})" if body_type else body_name
-                    body_options.append(display_name)
-        logger.debug(f"Generated {len(body_options)} body options")
-        
-        if body_options:
-            self.body_combo['values'] = body_options
-            # Pre-select current body if available
-            if self.plugin.body_name:
-                # Try to find a matching body
-                matching = [b for b in body_options if self.plugin.body_name in b]
-                if matching:
-                    self.body_var.set(matching[0])
-                else:
-                    self.body_var.set(body_options[0])
-            else:
-                self.body_var.set(body_options[0])
-        elif self.plugin.body_name:
-            # Fallback: just show current body
-            self.body_combo['values'] = [self.plugin.body_name]
-            self.body_var.set(self.plugin.body_name)
-        
-        self.body_combo.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=2)
-        row += 1
-        
-        # Architect Name
-        ttk.Label(main_frame, text=plugin_tl("Architect:")).grid(row=row, column=0, sticky=tk.W, pady=2)
-        self.architect_var = tk.StringVar(value=self.plugin.cmdr_name or "")
-        self.architect_entry = ttk.Entry(main_frame, textvariable=self.architect_var, width=42)
-        self.architect_entry.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=2)
-        row += 1
-        
-        # Pre-planned Site Selection (if available)
-        if self.system_sites:
-            ttk.Label(main_frame, text=plugin_tl("Pre-planned Site:")).grid(row=row, column=0, sticky=tk.W, pady=2)
-            self.site_var = tk.StringVar()
-            self.site_combo = ttk.Combobox(main_frame, textvariable=self.site_var, 
-                                          state='readonly', width=40)
-            site_options = [plugin_tl("<None - Create New>")]
-            self.site_id_map = {plugin_tl("<None - Create New>"): None}
-            self.site_data_map = {"<None - Create New>": None}  # Store full site data
-            for site in self.system_sites:
-                site_name = site.get('name', 'Unknown')
-                site_type = site.get('buildType', '')
-                display_name = f"{site_name} ({site_type})"
-                site_options.append(display_name)
-                self.site_id_map[display_name] = site.get('id')
-                self.site_data_map[display_name] = site  # Store complete site data
-            self.site_combo['values'] = site_options
-            self.site_combo.current(0)
-            self.site_combo.bind('<<ComboboxSelected>>', self._on_site_selected)
-            self.site_combo.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=2)
-            row += 1
-        
-        # Primary Port checkbox
-        self.is_primary_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(main_frame, text=plugin_tl("This is the primary port in the system"),
-                       variable=self.is_primary_var).grid(row=row, column=0, columnspan=2, 
-                                                          sticky=tk.W, pady=5)
-        row += 1
-        
-        # Notes
-        ttk.Label(main_frame, text=plugin_tl("Notes:")).grid(row=row, column=0, sticky=(tk.W, tk.N), pady=2)
-        self.notes_text = tk.Text(main_frame, width=40, height=6)
-        self.notes_text.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=2)
-        row += 1
-        
-        # Discord Link
-        ttk.Label(main_frame, text=plugin_tl("Discord Link:")).grid(row=row, column=0, sticky=tk.W, pady=2)
-        self.discord_var = tk.StringVar()
-        self.discord_entry = ttk.Entry(main_frame, textvariable=self.discord_var, width=42)
-        self.discord_entry.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=2)
-        row += 1
-        
-        # Buttons
-        button_frame = ttk.Frame(main_frame)
-        button_frame.grid(row=row, column=0, columnspan=2, pady=10)
-        
-        ttk.Button(button_frame, text=plugin_tl("Create"), command=self._on_create).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text=plugin_tl("Cancel"), command=self._on_cancel).pack(side=tk.LEFT, padx=5)
-        
-    def _on_category_selected(self, event=None):
-        """Handle category selection - populate model dropdown"""
-        category = self.category_var.get()
-        if category and category in self.construction_types:
-            models = list(self.construction_types[category].keys())
-            self.model_combo['values'] = models
-            if models:
-                self.model_var.set(models[0])  # Auto-select first model
-        else:
-            self.model_combo['values'] = []
-            self.model_var.set('')
-    
-    def _on_site_selected(self, event=None):
-        """Handle pre-planned site selection - auto-populate construction type and model"""
-        selected_display = self.site_var.get()
-        
-        # If "<None - Create New>" is selected, clear the fields
-        if selected_display == "<None - Create New>":
-            return
-        
-        # Get the site data
-        site_data = self.site_data_map.get(selected_display)
-        if not site_data:
-            return
-        
-        build_type = site_data.get('buildType', '')
-        logger.debug(f"Site selected with buildType: {build_type}")
-        
-        # Search through construction_types to find matching category and model
-        for category, models in self.construction_types.items():
-            for model_name, model_value in models.items():
-                if model_value == build_type:
-                    logger.debug(f"Found match: category={category}, model={model_name}")
-                    
-                    # Set the category
-                    self.category_var.set(category)
-                    
-                    # Populate models for this category
-                    model_list = list(self.construction_types[category].keys())
-                    self.model_combo['values'] = model_list
-                    
-                    # Set the specific model
-                    self.model_var.set(model_name)
-                    return
-        
-        logger.warning(f"No matching construction type found for buildType: {build_type}")
-    
-    def _populate_fields(self):
-        """Auto-populate fields from current game state"""
-        if self.plugin.current_station:
-            # Clean up station name - remove localization tokens like "$EXT_PANEL_ColonisationShip; "
-            station_name = self.plugin.current_station
-            if ';' in station_name:
-                # Extract the part after the semicolon (the actual name)
-                station_name = station_name.split(';', 1)[1].strip()
-            
-            # Use only the station name, not the system
-            self.name_var.set(station_name)
-    
-    def _on_create(self):
-        """Handle create button click"""
-        # Validate inputs
-        if not self.category_var.get():
-            messagebox.showerror(plugin_tl("Error"), plugin_tl("Please select a construction type"))
-            return
-        
-        if not self.model_var.get():
-            messagebox.showerror(plugin_tl("Error"), plugin_tl("Please select a model"))
-            return
-        
-        if not self.name_var.get():
-            messagebox.showerror(plugin_tl("Error"), plugin_tl("Please enter a project name"))
-            return
-        
-        # Validate required plugin data
-        if not self.plugin.current_market_id:
-            messagebox.showerror(plugin_tl("Error"), plugin_tl("Market ID not available. Please re-dock at the construction ship."))
-            return
-        
-        if not self.plugin.current_system:
-            messagebox.showerror(plugin_tl("Error"), plugin_tl("System name not available. Please re-dock or restart EDMC while in-game."))
-            return
-        
-        # Validate system address
-        if not self.plugin.current_system_address:
-            logger.debug("System address missing, attempting to fetch from journal")
-            self.plugin.current_system_address = self.plugin.get_system_address_from_journal()
-            
-            if not self.plugin.current_system_address:
-                messagebox.showerror(plugin_tl("Error"), plugin_tl("System address not available. Please re-dock or restart EDMC while in-game."))
-                return
-        
-        # Get build type API code from category + model selection
-        category = self.category_var.get()
-        model = self.model_var.get()
-        build_type_api = self.construction_types.get(category, {}).get(model)
-        
-        if not build_type_api:
-            messagebox.showerror(plugin_tl("Error"), plugin_tl("Invalid construction type/model selected"))
-            return
-        
-        # Extract commodities from construction depot data
-        commodities = {}
-        max_need = 0
-        if self.plugin.construction_depot_data:
-            resources = self.plugin.construction_depot_data.get('ResourcesRequired', [])
-            for resource in resources:
-                # Remove the _name suffix and $ prefix from commodity names
-                commodity_name = resource.get('Name', '').replace('$', '').replace('_name;', '').lower()
-                required_amount = resource.get('RequiredAmount', 0)
-                if commodity_name and required_amount > 0:
-                    commodities[commodity_name] = required_amount
-                    max_need += required_amount
-        else:
-            logger.warning("No construction depot data available - commodities list will be empty")
-        
-        # Architect name
-        arch_name = self.architect_var.get() or self.plugin.cmdr_name or "Unknown"
-        
-        project_data = {
-            "buildType": build_type_api,
-            "buildName": self.name_var.get(),
-            "marketId": int(self.plugin.current_market_id),
-            "systemAddress": int(self.plugin.current_system_address),
-            "systemName": self.plugin.current_system,
-            "starPos": self.plugin.star_pos or [0.0, 0.0, 0.0],
-            "isPrimaryPort": self.is_primary_var.get(),
-            "commodities": commodities,
-            "maxNeed": max_need,
-            "architectName": arch_name,
-            "commanders": {arch_name: []},
-        }
-        
-        # Optional fields
-        notes = self.notes_text.get("1.0", tk.END).strip()
-        if notes:
-            project_data["notes"] = notes
-        
-        if self.plugin.body_num:
-            project_data["bodyNum"] = int(self.plugin.body_num)
-        if self.plugin.body_name:
-            project_data["bodyName"] = self.plugin.body_name
-        
-        discord_link = self.discord_var.get()
-        if discord_link:
-            project_data["discordLink"] = discord_link
-        else:
-            project_data["discordLink"] = None
-        
-        # Include the full construction depot event data
-        if self.plugin.construction_depot_data:
-            project_data["colonisationConstructionDepot"] = self.plugin.construction_depot_data
-        
-        # Add pre-planned site ID if selected
-        if self.system_sites and hasattr(self, 'site_var'):
-            selected_site = self.site_var.get()
-            site_id = self.site_id_map.get(selected_site)
-            if site_id:
-                project_data["systemSiteId"] = site_id
-        
-        # Create project
-        logger.info("User clicked Create - sending project to API")
-        result = self.plugin.create_project(project_data)
-        
-        if result:
-            build_id = result.get('buildId')
-            messagebox.showinfo(plugin_tl("Success"), 
-                              plugin_tl("Project created successfully!") + f"\n\nBuild ID: {build_id}")
-            # Open project page in browser
-            if build_id:
-                open_url(f"https://ravencolonial.com/#build={build_id}")
-            self.result = result
-            self.dialog.destroy()
-        else:
-            error_msg = (
-                "Failed to create project.\n\n"
-                f"API URL: {self.plugin.api_base}/api/project/\n\n"
-                "Check EDMC logs for detailed error message:\n"
-                "%TEMP%\\EDMarketConnector\\EDMarketConnector.log\n\n"
-                "Common issues:\n"
-                "- Invalid build type\n"
-                "- Missing required fields\n"
-                "- API connectivity problems"
-            )
-            messagebox.showerror(plugin_tl("Error"), error_msg)
-    
-    def _on_cancel(self):
-        """Handle cancel button click"""
-        self.dialog.destroy()
-
-
 def plugin_start3(plugin_dir: str) -> str:
     """
     Load the plugin.
@@ -1272,6 +740,8 @@ def journal_entry(
     this.current_system = system
     this.current_station = station
     
+    logger.debug(f"Journal entry - cmdr: {cmdr}, system: {system}, station: {station}")
+    
     event = entry.get('event')
     
     # Handle different events
@@ -1347,7 +817,6 @@ def journal_entry(
 
 def open_url(url: str):
     """Open URL in browser"""
-    import webbrowser
     webbrowser.open(url)
 
 
@@ -1365,7 +834,7 @@ def open_create_dialog(parent):
     global this
     if this:
         try:
-            dialog = CreateProjectDialog(parent, this)
+            dialog = create_project_dialog.CreateProjectDialog(parent, this)
         except Exception as e:
             logger.error(f"Failed to open create dialog: {e}", exc_info=True)
             messagebox.showerror(plugin_tl("Error"), plugin_tl("Failed to open dialog:") + f" {str(e)}")
