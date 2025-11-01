@@ -13,15 +13,16 @@ class PluginConfig:
     """Configuration management for the Ravencolonial plugin"""
     
     # Plugin metadata
-    NAME = os.path.basename(os.path.dirname(__file__))
-    VERSION = "1.3.0"
+    NAME = os.path.basename(os.path.dirname(os.path.dirname(__file__)))
+    VERSION = "1.5.0"
     
     # API configuration
     DEFAULT_API_BASE = "https://ravencolonial100-awcbdvabgze4c5cq.canadacentral-01.azurewebsites.net"
     
     # Logging configuration
     LOG_LEVEL = logging.INFO
-    LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(module)s:%(lineno)d:%(funcName)s: %(message)s'
+    # Use simple format - EDMC will handle the full formatting
+    LOG_FORMAT = '%(name)s: %(levelname)s - %(message)s'
     LOG_TIME_FORMAT = '%Y-%m-%d %H:%M:%S'
     LOG_TIME_MSEC_FORMAT = '%s.%03d'
     

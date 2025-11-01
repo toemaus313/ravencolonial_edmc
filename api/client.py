@@ -5,12 +5,25 @@ Handles all communication with the Ravencolonial API endpoints.
 """
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 import json
 import logging
 import urllib.parse
 from typing import Optional, Dict, Any, List
+from config import appname
+import os
 
-logger = logging.getLogger(__name__)
+# Use EDMC-compliant logger namespace
+plugin_name = os.path.basename(os.path.dirname(os.path.dirname(__file__)))
+logger = logging.getLogger(f'{appname}.{plugin_name}.api')
+# Disable propagation to avoid inheriting EDMC's osthreadid formatter
+logger.propagate = False
+if not logger.hasHandlers():
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter('%(name)s: %(levelname)s - %(message)s'))
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
 
 
 class RavencolonialAPIClient:
@@ -24,11 +37,37 @@ class RavencolonialAPIClient:
         :param user_agent: User agent string for requests
         """
         self.api_base = api_base
+        self.cmdr_name = None
+        self.api_key = None
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': user_agent,
             'Content-Type': 'application/json'
         })
+        
+        # Configure retry logic: 2 retries with exponential backoff for timeouts and connection errors
+        retry_strategy = Retry(
+            total=2,  # Retry up to 2 times (3 attempts total)
+            backoff_factor=1,  # Wait 1s, then 2s between retries
+            status_forcelist=[500, 502, 503, 504],  # Retry on server errors
+            allowed_methods=["GET", "POST", "PATCH", "PUT"],  # Retry safe methods
+            raise_on_status=False  # Don't raise exception, let response.raise_for_status() handle it
+        )
+        adapter = HTTPAdapter(max_retries=retry_strategy)
+        self.session.mount("http://", adapter)
+        self.session.mount("https://", adapter)
+        logger.info("API client initialized with retry logic (2 retries, exponential backoff)")
+    
+    def set_credentials(self, cmdr_name: str, api_key: str):
+        """
+        Set commander credentials for Fleet Carrier API calls
+        
+        :param cmdr_name: Commander name
+        :param api_key: Ravencolonial API key
+        """
+        self.cmdr_name = cmdr_name
+        self.api_key = api_key
+        logger.debug(f"Set credentials for commander: {cmdr_name}")
     
     def get_project(self, system_address: int, market_id: int) -> Optional[Dict]:
         """Get project details for a specific system/station"""
@@ -190,3 +229,117 @@ class RavencolonialAPIClient:
             logger.error(f"Failed to mark project complete: {e}")
             logger.error(f"Exception details: {type(e).__name__}: {str(e)}")
             return False
+    
+    # Fleet Carrier methods
+    def get_fc(self, market_id: int) -> Optional[Dict[str, Any]]:
+        """Get Fleet Carrier data from Ravencolonial"""
+        try:
+            url = f"{self.api_base}/api/fc/{market_id}"
+            logger.debug(f"Getting FC data from URL: {url}")
+            response = self.session.get(url, timeout=10)
+            response.raise_for_status()
+            fc_data = response.json()
+            logger.debug(f"FC data response: {fc_data}")
+            return fc_data
+        except Exception as e:
+            logger.error(f"Failed to get FC data: {e}")
+            return None
+    
+    def update_fc_cargo(self, market_id: int, cargo: Dict[str, int]) -> Optional[Dict[str, int]]:
+        """Fully replace Fleet Carrier cargo with new totals"""
+        max_attempts = 3
+        for attempt in range(max_attempts):
+            try:
+                url = f"{self.api_base}/api/fc/{market_id}/cargo"
+                if attempt > 0:
+                    logger.warning(f"Retry attempt {attempt}/{max_attempts - 1} for FC cargo update")
+                logger.debug(f"Updating FC cargo at URL: {url}")
+                logger.debug(f"New cargo: {cargo}")
+                
+                # Add required headers
+                headers = {
+                    'rcc-cmdr': self.cmdr_name if hasattr(self, 'cmdr_name') else None,
+                    'rcc-key': self.api_key if hasattr(self, 'api_key') else None
+                }
+                headers = {k: v for k, v in headers.items() if v is not None}
+                
+                response = self.session.post(url, json=cargo, headers=headers, timeout=15)
+                logger.debug(f"Update FC cargo response status: {response.status_code}")
+                logger.debug(f"Update FC cargo response body: {response.text}")
+                response.raise_for_status()
+                
+                updated_cargo = response.json()
+                logger.info(f"Successfully updated FC {market_id} cargo")
+                return updated_cargo
+            except requests.exceptions.Timeout as e:
+                if attempt < max_attempts - 1:
+                    logger.warning(f"Timeout on attempt {attempt + 1}/{max_attempts}: {e}")
+                    continue  # Retry
+                else:
+                    logger.error(f"Failed to update FC cargo after {max_attempts} attempts (timeout): {e}")
+                    return None
+            except Exception as e:
+                logger.error(f"Failed to update FC cargo: {e}")
+                logger.error(f"Exception details: {type(e).__name__}: {str(e)}")
+                return None
+    
+    def supply_fc(self, market_id: int, cargo_diff: Dict[str, int]) -> Optional[Dict[str, int]]:
+        """Incrementally update Fleet Carrier cargo (add/remove specific quantities)"""
+        max_attempts = 3
+        for attempt in range(max_attempts):
+            try:
+                url = f"{self.api_base}/api/fc/{market_id}/cargo"
+                if attempt > 0:
+                    logger.warning(f"Retry attempt {attempt}/{max_attempts - 1} for FC cargo supply")
+                logger.debug(f"Supplying FC cargo at URL: {url}")
+                logger.debug(f"Cargo diff: {cargo_diff}")
+                
+                # Add required headers
+                headers = {
+                    'rcc-cmdr': self.cmdr_name if hasattr(self, 'cmdr_name') else None,
+                    'rcc-key': self.api_key if hasattr(self, 'api_key') else None
+                }
+                headers = {k: v for k, v in headers.items() if v is not None}
+                
+                response = self.session.patch(url, json=cargo_diff, headers=headers, timeout=15)
+                logger.debug(f"Supply FC response status: {response.status_code}")
+                logger.debug(f"Supply FC response body: {response.text}")
+                response.raise_for_status()
+                
+                updated_cargo = response.json()
+                logger.info(f"Successfully supplied FC {market_id} with cargo diff")
+                return updated_cargo
+            except requests.exceptions.Timeout as e:
+                if attempt < max_attempts - 1:
+                    logger.warning(f"Timeout on attempt {attempt + 1}/{max_attempts}: {e}")
+                    continue  # Retry
+                else:
+                    logger.error(f"Failed to supply FC cargo after {max_attempts} attempts (timeout): {e}")
+                    return None
+            except Exception as e:
+                logger.error(f"Failed to supply FC cargo: {e}")
+                logger.error(f"Exception details: {type(e).__name__}: {str(e)}")
+                return None
+    
+    def get_all_cmdr_fcs(self, cmdr_name: str) -> List[Dict[str, Any]]:
+        """Get all Fleet Carriers linked to a commander
+        
+        Returns a list of FC objects with marketId, name, displayName, and cargo dict
+        """
+        try:
+            url = f"{self.api_base}/api/cmdr/{urllib.parse.quote(cmdr_name)}/fc/all"
+            logger.debug(f"Getting all CMDR FCs from URL: {url}")
+            response = self.session.get(url, timeout=10)
+            
+            # 404 means no FCs linked yet - this is normal, not an error
+            if response.status_code == 404:
+                logger.info(f"No Fleet Carriers linked for commander {cmdr_name}")
+                return []
+            
+            response.raise_for_status()
+            fcs = response.json()
+            logger.debug(f"CMDR FCs response: {fcs}")
+            return fcs if isinstance(fcs, list) else []
+        except Exception as e:
+            logger.error(f"Failed to get CMDR FCs: {e}")
+            return []

@@ -27,13 +27,29 @@ from ui import UIManager
 from models import ProjectData, SystemSite, ConstructionDepotData, CargoContribution
 from plugin_config import PluginConfig
 import construction_completion
+import fleet_carrier_handler
 
 # Plugin metadata
 plugin_name = os.path.basename(os.path.dirname(__file__))
-plugin_version = "1.3.0"
+plugin_version = "1.5.0"
 
-# Setup logging using config module
-logger = PluginConfig.setup_logging()
+# Setup logging per EDMC documentation
+# A Logger is used per 'found' plugin to make it easy to include the plugin's
+# folder name in the logging output format.
+# NB: plugin_name here *must* be the plugin's folder name
+logger = logging.getLogger(f'{appname}.{plugin_name}')
+
+# If the Logger has handlers then it was already set up by the core code, else
+# it needs setting up here.
+if not logger.hasHandlers():
+    level = logging.INFO  # So logger.info(...) is equivalent to print()
+    
+    logger.setLevel(level)
+    logger_channel = logging.StreamHandler()
+    # Use simple formatter to avoid osthreadid issues
+    logger_formatter = logging.Formatter('%(name)s: %(levelname)s - %(message)s')
+    logger_channel.setFormatter(logger_formatter)
+    logger.addHandler(logger_channel)
 
 # Setup localization
 plugin_tl = functools.partial(l10n.translations.tl, context=__file__)
@@ -98,6 +114,9 @@ class RavencolonialPlugin:
         
         # Construction completion handler
         self.completion_handler = construction_completion.ConstructionCompletionHandler(self)
+        
+        # Fleet Carrier handler
+        self.fc_handler = fleet_carrier_handler.FleetCarrierHandler(self)
         
     def _api_worker(self):
         """Background worker thread for API calls"""
@@ -298,6 +317,43 @@ class RavencolonialPlugin:
         """Handle Market journal event"""
         return self.journal_handler.handle_market(entry)
     
+    def get_market_data(self) -> Optional[List[Dict[str, Any]]]:
+        """Get current market data from EDMC"""
+        try:
+            # EDMC provides market data through the monitor's market file
+            # This is a simplified implementation - in practice you'd need to
+            # access EDMC's market data through the appropriate API
+            import json
+            import os
+            
+            # Get the market file path from EDMC's config
+            journal_dir = config.get_str('journaldir') or None
+            if not journal_dir:
+                logger.warning("No journal directory configured")
+                return None
+            
+            # Look for the latest market file
+            market_files = [f for f in os.listdir(journal_dir) if f.startswith('Market.') and f.endswith('.json')]
+            if not market_files:
+                logger.warning("No market files found")
+                return None
+            
+            # Get the most recent market file
+            latest_file = sorted(market_files)[-1]
+            market_path = os.path.join(journal_dir, latest_file)
+            
+            with open(market_path, 'r') as f:
+                market_data = json.load(f)
+            
+            # Extract items from market data
+            items = market_data.get('Items', [])
+            logger.debug(f"Loaded {len(items)} items from market file")
+            
+            return items
+        except Exception as e:
+            logger.error(f"Failed to get market data: {e}")
+            return None
+    
     def update_status(self, message: str):
         """Update the UI status label"""
         return self.ui_manager.update_status(message)
@@ -427,9 +483,13 @@ def plugin_start3(plugin_dir: str) -> str:
     :return: Plugin name
     """
     global this
-    this = RavencolonialPlugin()
-    logger.info(f"{PluginConfig.NAME} v{PluginConfig.VERSION} loaded")
-    return PluginConfig.NAME
+    try:
+        this = RavencolonialPlugin()
+        logger.info(f"Ravencolonial-EDMC v{PluginConfig.VERSION} loaded")
+        return plugin_name
+    except Exception as e:
+        logger.error(f"Failed to initialize: {e}", exc_info=True)
+        raise
 
 
 def plugin_stop() -> None:
@@ -446,13 +506,85 @@ def plugin_stop() -> None:
         logger.info(f"{PluginConfig.NAME} stopped")
 
 
-# No settings page needed - plugin works automatically without configuration
-# def plugin_prefs(parent: nb.Notebook, cmdr: str, is_beta: bool) -> Optional[tk.Frame]:
-#     """
-#     Create a preferences frame for the plugin.
-#     Would be used if plugin needed user-configurable settings.
-#     """
-#     pass
+def plugin_prefs(parent: nb.Notebook, cmdr: str, is_beta: bool) -> nb.Frame:
+    """
+    Create settings page for the plugin.
+    
+    :param parent: The notebook parent
+    :param cmdr: Commander name
+    :param is_beta: Whether in beta
+    :return: Settings frame
+    """
+    global this
+    logger.info("Creating plugin preferences page")
+    
+    # Create a frame for the settings (use nb.Frame as EDMC expects)
+    frame = nb.Frame(parent)
+    
+    # Title
+    title_label = ttk.Label(frame, text="Ravencolonial Plugin Settings", font=('TkDefaultFont', 12, 'bold'))
+    title_label.grid(row=0, column=0, columnspan=2, sticky=tk.W, padx=10, pady=(10, 20))
+    
+    # API Key setting
+    api_key_label = ttk.Label(frame, text="Ravencolonial API Key:")
+    api_key_label.grid(row=1, column=0, sticky=tk.W, padx=10, pady=5)
+    
+    try:
+        api_key_value = config.get_str('ravencolonial_api_key') or ''
+    except:
+        api_key_value = ''
+    
+    api_key_var = tk.StringVar(value=api_key_value)
+    api_key_entry = ttk.Entry(frame, textvariable=api_key_var, width=40, show="*")
+    api_key_entry.grid(row=1, column=1, sticky=tk.W, padx=10, pady=5)
+    
+    # API Key help text
+    api_key_help = ttk.Label(frame, text="Get your API key from Ravencolonial account settings", 
+                             font=('TkDefaultFont', 9), foreground='gray')
+    api_key_help.grid(row=2, column=1, sticky=tk.W, padx=10, pady=(0, 10))
+    
+    # Stealth Mode checkbox
+    try:
+        stealth_value = config.get_bool('ravencolonial_stealth_mode')
+    except:
+        stealth_value = False
+    
+    stealth_var = tk.BooleanVar(value=stealth_value)
+    stealth_check = ttk.Checkbutton(frame, text="Stealth Mode", variable=stealth_var)
+    stealth_check.grid(row=3, column=0, columnspan=2, sticky=tk.W, padx=10, pady=5)
+    
+    # Stealth Mode help text
+    stealth_help = ttk.Label(frame, text="When enabled, stops sending Fleet Carrier commodity data to Ravencolonial", 
+                             font=('TkDefaultFont', 9), foreground='gray')
+    stealth_help.grid(row=4, column=1, sticky=tk.W, padx=10, pady=(0, 10))
+    
+    # Save button
+    def save_settings():
+        """Save the settings to EDMC config"""
+        config.set('ravencolonial_api_key', api_key_var.get())
+        config.set('ravencolonial_stealth_mode', stealth_var.get())
+        
+        # Update API client credentials if plugin is loaded
+        if this and api_key_var.get():
+            this.api_client.set_credentials(cmdr, api_key_var.get())
+        
+        # Update Fleet Carrier stealth mode if plugin is loaded
+        if this and hasattr(this, 'fc_handler'):
+            this.fc_handler.set_stealth_mode(stealth_var.get())
+    
+    save_button = ttk.Button(frame, text="Save Settings", command=save_settings)
+    save_button.grid(row=5, column=0, columnspan=2, pady=20)
+    
+    logger.info("Plugin preferences page created successfully")
+    return frame
+
+
+def plugin_app_prefs_cmdr(parent: nb.Notebook, cmdr: str, is_beta: bool) -> Optional[nb.Frame]:
+    """
+    Alternative preferences function for EDMC compatibility.
+    Some EDMC versions call this instead of plugin_prefs.
+    """
+    return plugin_prefs(parent, cmdr, is_beta)
 
 
 def prefs_changed(cmdr: str, is_beta: bool) -> None:
@@ -513,6 +645,31 @@ def journal_entry(
     
     logger.debug(f"Journal entry - cmdr: {cmdr}, system: {system}, station: {station}")
     
+    # Initialize Fleet Carrier handler on first commander event
+    logger.debug(f"FC init check: cmdr={cmdr}, has_initialized={hasattr(this.fc_handler, '_initialized')}")
+    if cmdr and not hasattr(this.fc_handler, '_initialized'):
+        logger.info(f"Initializing Fleet Carrier handler for {cmdr}")
+        # Set API client credentials for Fleet Carrier operations
+        api_key = config.get_str('ravencolonial_api_key') or ''
+        logger.debug(f"API key present: {bool(api_key)}")
+        if api_key:
+            this.api_client.set_credentials(cmdr, api_key)
+            logger.debug("API credentials set")
+        
+        this.fc_handler.initialize_fcs(cmdr)
+        
+        # Initialize current station state from game state (in case already docked when EDMC starts)
+        if state:
+            station_type = state.get('StationType')
+            market_id = state.get('MarketID')
+            if station_type and market_id:
+                this.fc_handler.current_station_type = station_type
+                this.fc_handler.current_market_id = market_id
+                logger.info(f"Initialized FC handler with current station: {station_type}, marketID: {market_id}")
+        
+        this.fc_handler._initialized = True
+        logger.info("Fleet Carrier handler initialization complete")
+    
     event = entry.get('event')
     
     # Handle different events
@@ -530,6 +687,10 @@ def journal_entry(
         station_name = entry.get('StationName', '')
         this.is_construction_ship = 'ColonisationShip' in station_name
         logger.debug(f"Docked details - StationType: {this.station_type}, is_construction_ship: {this.is_construction_ship}")
+        
+        # Handle Fleet Carrier docking
+        this.fc_handler.handle_docked_event(entry)
+        
         this.update_status(f"Docked at {station}")
         this.update_create_button()
         
@@ -569,6 +730,25 @@ def journal_entry(
         
     elif event == 'Market':
         this.handle_market(entry)
+        # Handle Fleet Carrier market updates
+        # Disabled for now - MarketBuy/MarketSell events handle commodity updates
+        # this.fc_handler.handle_market_event(entry)
+        
+    elif event == 'MarketBuy':
+        # Handle Fleet Carrier purchases
+        this.fc_handler.handle_marketbuy_event(entry)
+        
+    elif event == 'MarketSell':
+        # Handle Fleet Carrier sales
+        logger.debug(f"MarketSell event received: {entry}")
+        result = this.fc_handler.handle_marketsell_event(entry)
+        logger.debug(f"MarketSell handler returned: {result}")
+        
+    elif event == 'CargoTransfer':
+        # Handle Fleet Carrier cargo transfers
+        logger.debug(f"CargoTransfer event received: {entry}")
+        result = this.fc_handler.handle_cargotransfer_event(entry)
+        logger.debug(f"CargoTransfer handler returned: {result}")
         
     elif event == 'Cargo':
         # Update cargo manifest
@@ -577,11 +757,29 @@ def journal_entry(
     
     elif event == 'ColonisationConstructionDepot':
         logger.debug("ColonisationConstructionDepot event received")
-        this.handle_colonisation_construction_depot(entry)
+        # Check stealth mode
+        try:
+            stealth_mode = config.get_bool('ravencolonial_stealth_mode')
+        except:
+            stealth_mode = False
+        
+        if not stealth_mode:
+            this.handle_colonisation_construction_depot(entry)
+        else:
+            logger.debug("Stealth mode enabled - not sending colonization depot data")
     
     elif event == 'ColonisationContribution':
         logger.debug("ColonisationContribution event received")
-        this.handle_colonisation_contribution(entry)
+        # Check stealth mode
+        try:
+            stealth_mode = config.get_bool('ravencolonial_stealth_mode')
+        except:
+            stealth_mode = False
+        
+        if not stealth_mode:
+            this.handle_colonisation_contribution(entry)
+        else:
+            logger.debug("Stealth mode enabled - not sending colonization contribution data")
     
     return None
 

@@ -10,6 +10,7 @@ An Elite Dangerous Market Connector (EDMC) plugin that automatically tracks colo
 - **Lightweight**: Runs alongside EDMC with minimal resource usage
 - **No Configuration Needed**: Works out of the box after installation
 - **Smart UI**: Create Project button only enabled when docked at stations
+- **Fleet Carrier Support**: Automatically tracks and updates commodity quantities on linked Fleet Carriers
 
 ## What This Plugin Does
 
@@ -21,6 +22,30 @@ This plugin provides the same colonization tracking functionality as SRVSurvey, 
 - Monitors your current projects
 - Updates progress in real-time
 - Auto-populates project details from journal data
+- **Fleet Carrier commodity tracking**: Monitors buy/sell operations and cargo transfers on linked Fleet Carriers
+- **Real-time FC updates**: Automatically updates Ravencolonial when your Fleet Carrier's commodity levels change
+
+## Configuration
+
+The Ravencolonial plugin includes a settings page in EDMC where you can configure:
+
+### API Key
+- **Required for Fleet Carrier tracking**: Get your API key from your Ravencolonial account settings
+- The API key is used to authenticate Fleet Carrier commodity updates
+- **Optional for basic colonization tracking**: The plugin works for colonization project tracking without an API key
+- Stored securely in EDMC's configuration
+
+### Stealth Mode
+- **Optional privacy feature**: When enabled, stops sending Fleet Carrier commodity data to Ravencolonial
+- Useful if you want to use the plugin for colonization tracking but keep your FC cargo private
+- Only affects Fleet Carrier commodity tracking - colonization project tracking continues normally
+
+### Accessing Settings
+1. Open EDMC
+2. Go to **Settings** (click the gear icon)
+3. Select the **Ravencolonial** tab
+4. Configure your API key and Stealth Mode preference
+5. Click **Save Settings**
 
 ## Installation
 
@@ -28,6 +53,7 @@ This plugin provides the same colonization tracking functionality as SRVSurvey, 
 
 - [Elite Dangerous Market Connector (EDMC)](https://github.com/EDCD/EDMarketConnector/releases) version 5.0.0 or later
 - Python 3.7+ (bundled with EDMC)
+- Ravencolonial account (for API key and project tracking)
 
 ### Install Steps
 
@@ -103,3 +129,17 @@ This plugin is licensed under the GNU General Public License v2.0 or later, cons
 - **EDMC Wiki**: [Plugin Documentation](https://github.com/EDCD/EDMarketConnector/wiki/Plugins)
 - **Ravencolonial**: [Website](https://ravencolonial.com)
 - **SRVSurvey Discord**: [Guardian Science Corps](https://discord.gg/GJjTFa9fsz)
+
+## Version History
+
+### v1.5.0 (2025-11-01)
+- Added support for Fleet Carrier
+- Added Fleet Carrier stealth mode
+- Added settings page for API key and stealth mode
+
+### v1.4.1 (2025-11-01)
+- Bugfix for system bodies sometimes not displaying properly
+
+### v1.4.0 (2025-10-31)
+- Initial release
+
