@@ -94,7 +94,12 @@ class CreateProjectDialog:
         # First, get all bodies from the /bodies API with their names
         bodies_by_num = {}
         for body in self.system_bodies:
-            body_num = body.get('id') or body.get('num') or body.get('bodyId')
+            # Note: Must check explicitly for None, not use 'or' chain, because 0 is falsy
+            body_num = body.get('id')
+            if body_num is None:
+                body_num = body.get('num')
+            if body_num is None:
+                body_num = body.get('bodyId')
             body_name = body.get('name', '')
             body_type = body.get('type', '')
             
@@ -111,10 +116,14 @@ class CreateProjectDialog:
         site_bodies = set()
         for site in self.system_sites:
             # Try different possible field names for bodyNum
-            body_num = (site.get('bodyNum') or 
-                       site.get('body_id') or 
-                       site.get('bodyId') or 
-                       site.get('body_num'))
+            # Note: Must check explicitly for None, not use 'or' chain, because 0 is falsy
+            body_num = site.get('bodyNum')
+            if body_num is None:
+                body_num = site.get('body_id')
+            if body_num is None:
+                body_num = site.get('bodyId')
+            if body_num is None:
+                body_num = site.get('body_num')
             
             if body_num is not None:
                 body_num_str = str(body_num)
@@ -544,10 +553,14 @@ class CreateProjectDialog:
         logger.debug(f"Site data available fields: {list(site_data.keys())}")
         
         # Try to get bodyNum from the site (this is what Ravencolonial uses)
-        site_body_num = (site_data.get('bodyNum') or 
-                        site_data.get('body_id') or 
-                        site_data.get('bodyId') or 
-                        site_data.get('body_num'))
+        # Note: Must check explicitly for None, not use 'or' chain, because 0 is falsy
+        site_body_num = site_data.get('bodyNum')
+        if site_body_num is None:
+            site_body_num = site_data.get('body_id')
+        if site_body_num is None:
+            site_body_num = site_data.get('bodyId')
+        if site_body_num is None:
+            site_body_num = site_data.get('body_num')
         
         logger.debug(f"Site bodyNum: {site_body_num}")
         
