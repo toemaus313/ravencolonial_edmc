@@ -9,6 +9,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import myNotebook as nb
 from config import appname, config
+from companion import CAPIData
 from typing import Optional, Dict, Any, List
 from threading import Thread
 import queue
@@ -31,7 +32,7 @@ import fleet_carrier_handler
 
 # Plugin metadata
 plugin_name = os.path.basename(os.path.dirname(__file__))
-plugin_version = "1.5.0"
+plugin_version = "1.5.1"
 
 # Setup logging per EDMC documentation
 # A Logger is used per 'found' plugin to make it easy to include the plugin's
@@ -780,6 +781,72 @@ def journal_entry(
             this.handle_colonisation_contribution(entry)
         else:
             logger.debug("Stealth mode enabled - not sending colonization contribution data")
+    
+    return None
+
+
+def capi_fleetcarrier(data: CAPIData) -> Optional[str]:
+    """
+    Handle Fleet Carrier CAPI data from Frontier.
+    Called when EDMC fetches fresh FC data after CarrierStats journal events.
+    
+    :param data: CAPIData object with FC information
+    :return: Optional status message
+    """
+    global this
+    
+    if not this or not this.fc_handler:
+        return None
+    
+    try:
+        # Extract FC callsign and market ID
+        if 'name' not in data or 'callsign' not in data['name']:
+            logger.warning("CAPI FC data missing name/callsign")
+            return None
+        
+        callsign = data['name']['callsign']
+        logger.info(f"Received CAPI data for Fleet Carrier: {callsign}")
+        
+        # Get market ID from current state (CAPI doesn't provide market ID directly)
+        market_id = this.fc_handler.current_market_id
+        if not market_id:
+            logger.warning("No current market ID - cannot process CAPI FC data")
+            return None
+        
+        # Check if this FC is linked
+        if market_id not in this.fc_handler.linked_fcs:
+            logger.debug(f"CAPI data for unlinked FC {callsign} ({market_id}) - ignoring")
+            return None
+        
+        # Check stealth mode
+        if this.fc_handler.stealth_mode:
+            logger.info(f"Stealth mode enabled - ignoring CAPI data for FC {callsign}")
+            return None
+        
+        # Extract cargo data from CAPI
+        cargo_list = data.get('cargo', [])
+        if not cargo_list:
+            logger.info(f"No cargo data in CAPI response for FC {callsign}")
+            return None
+        
+        # Convert CAPI cargo format to our format
+        # CAPI format: [{"commodity": "name", "qty": 1, "value": X, ...}, ...]
+        # Our format: {"commodity": total_quantity, ...}
+        cargo_totals = {}
+        for item in cargo_list:
+            commodity = item.get('commodity', '').lower()
+            qty = item.get('qty', 0)
+            if commodity:
+                cargo_totals[commodity] = cargo_totals.get(commodity, 0) + qty
+        
+        logger.info(f"CAPI FC cargo for {callsign}: {len(cargo_totals)} commodity types, {sum(cargo_totals.values())} total units")
+        logger.debug(f"CAPI cargo details: {cargo_totals}")
+        
+        # Update FC cargo on server
+        this.fc_handler.update_fc_cargo_from_capi(market_id, cargo_totals)
+        
+    except Exception as e:
+        logger.error(f"Error processing CAPI FC data: {e}", exc_info=True)
     
     return None
 

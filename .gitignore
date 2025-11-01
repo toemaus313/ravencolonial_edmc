@@ -47,6 +47,8 @@ htmlcov/
 
 # Distribution
 *.zip
+temp_release/
 bounce-eduser.ps1
 bounce.ps1
 plugin.md
+make_release.ps1

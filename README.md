@@ -11,6 +11,8 @@ An Elite Dangerous Market Connector (EDMC) plugin that automatically tracks colo
 - **No Configuration Needed**: Works out of the box after installation
 - **Smart UI**: Create Project button only enabled when docked at stations
 - **Fleet Carrier Support**: Automatically tracks and updates commodity quantities on linked Fleet Carriers
+  - **__FLEET CARRIER SUPPORT REQUIRES YOU TO ENTER YOUR RAVENCOLONIAL API KEY IN SETTINGS->RAVENCOLONIAL-EDMC__**
+- **Stealth Mode**: Optional privacy feature that stops sending Fleet Carrier commodity data to Ravencolonial
 
 ## What This Plugin Does
 
@@ -32,6 +34,7 @@ The Ravencolonial plugin includes a settings page in EDMC where you can configur
 ### API Key
 - **Required for Fleet Carrier tracking**: Get your API key from your Ravencolonial account settings
 - The API key is used to authenticate Fleet Carrier commodity updates
+- Find this in the upper-right corner of your Ravencolonial dashboard in your user settings
 - **Optional for basic colonization tracking**: The plugin works for colonization project tracking without an API key
 - Stored securely in EDMC's configuration
 
@@ -46,8 +49,6 @@ The Ravencolonial plugin includes a settings page in EDMC where you can configur
 3. Select the **Ravencolonial** tab
 4. Configure your API key and Stealth Mode preference
 5. Click **Save Settings**
-
-## Installation
 
 ### Prerequisites
 
@@ -132,7 +133,7 @@ This plugin is licensed under the GNU General Public License v2.0 or later, cons
 
 ## Version History
 
-### v1.5.0 (2025-11-01)
+### v1.5.1 (2025-11-01)
 - Added support for Fleet Carrier
 - Added Fleet Carrier stealth mode
 - Added settings page for API key and stealth mode
