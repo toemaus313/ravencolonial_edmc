@@ -36,6 +36,7 @@ class FleetCarrierHandler:
         self.current_station_type = None
         self.current_market_id = None
         self.stealth_mode = False
+        self.capi_received_fcs = set()  # Track FCs that have received CAPI data this session
     
     def set_stealth_mode(self, enabled: bool):
         """Enable or disable stealth mode"""
@@ -60,7 +61,8 @@ class FleetCarrierHandler:
             if self.stealth_mode:
                 logger.info("Fleet Carrier stealth mode is enabled")
             
-            # Get all FCs linked to this commander
+            # Get all FCs linked to this commander from Ravencolonial API
+            # This gives us the current server-side cargo state as initial baseline
             all_fcs = self.api_client.api_client.get_all_cmdr_fcs(cmdr_name)
             
             # Store as dictionary by marketId for easy lookup
@@ -69,9 +71,16 @@ class FleetCarrierHandler:
             if len(self.linked_fcs) == 0:
                 logger.info(f"No Fleet Carriers linked for commander {cmdr_name}. To link a Fleet Carrier, visit Ravencolonial.com")
             else:
-                logger.info(f"Loaded {len(self.linked_fcs)} linked Fleet Carriers")
+                logger.info(f"Loaded {len(self.linked_fcs)} linked Fleet Carriers with server-side cargo state")
                 for market_id, fc in self.linked_fcs.items():
-                    logger.debug(f"FC {market_id}: {fc.get('displayName', fc.get('name', 'Unknown'))}")
+                    fc_name = fc.get('displayName', fc.get('name', 'Unknown'))
+                    cargo = fc.get('cargo', {})
+                    total_cargo = sum(cargo.values()) if cargo else 0
+                    logger.info(f"FC {market_id} ({fc_name}): {len(cargo)} commodity types, {total_cargo} total units (server baseline)")
+                
+                # Mark all FCs as having initial state from server
+                # CAPI can still provide a fresher snapshot if it arrives
+                logger.info(f"Initial cargo state loaded from Ravencolonial API for {len(self.linked_fcs)} FCs")
             
             return True
         except Exception as e:
@@ -307,6 +316,29 @@ class FleetCarrierHandler:
         except Exception as e:
             logger.error(f"Failed to get market data: {e}")
             return None
+    
+    def update_fc_cargo_from_capi(self, market_id: int, cargo_totals: Dict[str, int]):
+        """
+        Update FC cargo using data from Frontier CAPI.
+        CAPI data significantly lags real-time, so we only use it for the initial 
+        snapshot on plugin load. After that, we rely on real-time journal events.
+        
+        :param market_id: Fleet Carrier market ID
+        :param cargo_totals: Dictionary of commodity name -> total quantity
+        """
+        # Check if we've already received CAPI data for this FC this session
+        if market_id in self.capi_received_fcs:
+            logger.info(f"Ignoring CAPI data for FC {market_id} - already received initial snapshot, using real-time journal events instead")
+            return
+        
+        logger.info(f"Receiving initial CAPI snapshot for FC {market_id}")
+        logger.debug(f"CAPI cargo totals: {cargo_totals}")
+        
+        # Mark this FC as having received CAPI data
+        self.capi_received_fcs.add(market_id)
+        
+        # Update server with full cargo snapshot (initial state only)
+        self._update_fc_cargo_async(market_id, cargo_totals)
     
     def _supply_fc_async(self, market_id: int, cargo_diff: Dict[str, int]):
         """Update FC cargo incrementally using the API queue"""
