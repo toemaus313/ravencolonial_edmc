@@ -48,7 +48,6 @@ $tempDir = "temp_release"
 $filesToInclude = @(
     "load.py",
     "README.md",
-    "plugin_config.py",
     "construction_completion.py",
     "create_project_dialog.py",
     "fleet_carrier_handler.py",
@@ -58,9 +57,12 @@ $filesToInclude = @(
 # Directories to include (recursively)
 $dirsToInclude = @(
     "api",
+    "config",
     "handlers",
+    "L10n",
     "models",
-    "ui"
+    "ui",
+    "plugin_config"
 )
 
 Write-Info ""
