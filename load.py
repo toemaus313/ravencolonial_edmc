@@ -32,7 +32,7 @@ import fleet_carrier_handler
 
 # Plugin metadata
 plugin_name = os.path.basename(os.path.dirname(__file__))
-plugin_version = "1.5.1"
+plugin_version = "1.5.2"
 
 # Setup logging per EDMC documentation
 # A Logger is used per 'found' plugin to make it easy to include the plugin's

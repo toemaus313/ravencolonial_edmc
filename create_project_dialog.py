@@ -130,26 +130,22 @@ class CreateProjectDialog:
                 site_bodies.add(body_num_str)
                 logger.debug(f"Body from /sites API: {body_num_str}")
         
-        # Combine: use bodies API for names, but only include bodies that have sites
-        # OR include all bodies if no sites exist
+        # Combine: Always show all bodies from the bodies API
+        # (Pre-planned sites are just for auto-population, not filtering)
+        self.available_bodies = bodies_by_num.copy()
+        logger.debug(f"Using all {len(bodies_by_num)} bodies from bodies API")
+        
+        # Also add any bodies from sites API that aren't in bodies API
         if site_bodies:
-            # Use only bodies that have pre-planned sites
             for body_num_str in site_bodies:
-                if body_num_str in bodies_by_num:
-                    self.available_bodies[body_num_str] = bodies_by_num[body_num_str]
-                    logger.debug(f"Added body with site: {body_num_str} = {bodies_by_num[body_num_str]['name']}")
-                else:
+                if body_num_str not in self.available_bodies:
                     # Body has site but not in bodies API, add with generic name
                     self.available_bodies[body_num_str] = {
                         'name': f'Body {body_num_str}',
                         'type': 'Unknown',
                         'num': int(body_num_str)
                     }
-                    logger.debug(f"Added body with site (no name): {body_num_str}")
-        else:
-            # No sites, use all bodies from bodies API
-            self.available_bodies = bodies_by_num.copy()
-            logger.debug("No sites found, using all bodies from bodies API")
+                    logger.debug(f"Added body with site (not in bodies API): {body_num_str}")
         
         logger.debug(f"Combined data: {len(self.available_bodies)} unique bodies available")
     
@@ -235,7 +231,7 @@ class CreateProjectDialog:
             },
             # Tier 1 Surface Outposts
             "Tier 1: Civilian Surface Outpost": {
-                "Angios": "angios",
+                "Atropos": "atropos",
                 "Clotho": "clotho",
                 "Decima": "decima",
                 "Hestia": "hestia",
@@ -243,16 +239,16 @@ class CreateProjectDialog:
                 "Nona": "nona"
             },
             "Tier 1: Industrial Surface Outpost": {
-                "Bis": "bis",
+                "Bia": "bia",
                 "Hephaestus": "hephaestus",
-                "Meitis": "meitis",
+                "Mefitis": "mefitis",
                 "Opis": "opis",
                 "Ponos": "ponos",
                 "Tethys": "tethys"
             },
             "Tier 1: Scientific Surface Outpost": {
                 "Ananke": "ananke",
-                "Antevoerta": "antevoerta",
+                "Antevorta": "antevorta",
                 "Fauna": "fauna",
                 "Necessitas": "necessitas",
                 "Porrima": "porrima",
@@ -269,13 +265,13 @@ class CreateProjectDialog:
                 "Mantus": "mantus",
                 "Orcus": "orcus"
             },
-            "Tier 1: Industrial Settlement: Small": {"Pontus": "pontus"},
+            "Tier 1: Industrial Settlement: Small": {"Fontus": "fontus"},
             "Tier 1: Industrial Settlement: Medium": {
                 "Meteope": "meteope",
                 "Minthe": "minthe",
                 "Palici": "palici"
             },
-            "Tier 1: Military Settlement: Small": {"Mars": "mars"},
+            "Tier 1: Military Settlement: Small": {"Ioke": "ioke"},
             "Tier 1: Military Settlement: Medium": {
                 "Bellona": "bellona",
                 "Enyo": "enyo",
@@ -283,12 +279,12 @@ class CreateProjectDialog:
             },
             # Tier 2 Installations
             "Tier 2: Military Installation": {
-                "Aesculor": "aesculor",
+                "Alastor": "alastor",
                 "Vacuna": "vacuna"
             },
             "Tier 2: Security Installation": {
                 "Dicaeosyne": "dicaeosyne",
-                "Eupraxia": "eupraxia",
+                "Eunomia": "eunomia",
                 "Nomos": "nomos",
                 "Poena": "poena"
             },
@@ -305,7 +301,7 @@ class CreateProjectDialog:
             },
             "Tier 2: Tourist Installation": {
                 "Hedone": "hedone",
-                "Opsora": "opsora",
+                "Opora": "opora",
                 "Pasithea": "pasithea"
             },
             "Tier 2: Space Bar Installation": {
@@ -325,7 +321,7 @@ class CreateProjectDialog:
             "Tier 2: Industrial Settlement: Large": {"Minerva": "minerva"},
             "Tier 2: Bio Settlement: Small": {"Phoebe": "phoebe"},
             "Tier 2: Bio Settlement: Medium": {
-                "Asteris": "asteris",
+                "Asteria": "asteria",
                 "Caerus": "caerus"
             },
             "Tier 2: Bio Settlement: Large": {"Chronos": "chronos"},
@@ -334,11 +330,11 @@ class CreateProjectDialog:
                 "Comus": "comus",
                 "Gelos": "gelos"
             },
-            "Tier 2: Tourist Settlement: Large": {"Fulgora": "fulgora"},
+            "Tier 2: Tourist Settlement: Large": {"Fufluns": "fufluns"},
             # Tier 2 Hubs
             "Tier 2: Extraction Hub": {"Tartarus": "tartarus"},
             "Tier 2: Civilian Hub": {"Aegle": "aegle"},
-            "Tier 2: Exploration Hub": {"Telus": "telus"},
+            "Tier 2: Exploration Hub": {"Tellus": "tellus"},
             "Tier 2: Outpost Hub": {"Io": "io"},
             "Tier 2: Scientific Hub": {
                 "Athena": "athena",
@@ -348,10 +344,12 @@ class CreateProjectDialog:
                 "Alala": "alala",
                 "Ares": "ares"
             },
-            "Tier 2: Refinery Hub": {"Refinery": "refinery"},
+            "Tier 2: Refinery Hub": {
+                "Silenus": "silenus"
+            },
             "Tier 2: High Tech Hub": {"Janus": "janus"},
             "Tier 2: Industrial Hub": {
-                "Eunocus": "eunocus",
+                "Eunostus": "eunostus",
                 "Molae": "molae",
                 "Tellus": "tellus"
             },
@@ -562,7 +560,7 @@ class CreateProjectDialog:
         if site_body_num is None:
             site_body_num = site_data.get('body_num')
         
-        logger.debug(f"Site bodyNum: {site_body_num}")
+        logger.debug(f"Site bodyNum: {site_body_num} (type: {type(site_body_num)})")
         
         if site_body_num is None:
             logger.debug("No bodyNum found in site data, checking all fields...")
@@ -577,14 +575,19 @@ class CreateProjectDialog:
         logger.debug(f"Available body options: {body_options}")
         
         # Look for the body with matching bodyNum using new format [ID: 123]
-        target_display = f"[ID: {site_body_num}]"
+        # Convert to string to ensure consistent comparison
+        target_display = f"[ID: {str(site_body_num)}]"
+        logger.debug(f"Searching for target: '{target_display}'")
+        
         for body_option in body_options:
             if body_option and target_display in body_option:
                 logger.debug(f"Found matching body by bodyNum: '{body_option}'")
                 self.body_var.set(body_option)
+                logger.info(f"Successfully set body to: '{body_option}'")
                 return
         
         logger.warning(f"Could not find matching body for site bodyNum: {site_body_num}")
+        logger.warning(f"Target was: '{target_display}'")
     
     def _populate_fields(self):
         """Auto-populate fields from current game state"""
