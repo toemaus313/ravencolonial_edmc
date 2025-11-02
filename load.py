@@ -20,6 +20,8 @@ import l10n
 import plug
 import create_project_dialog
 import webbrowser
+import requests
+import json
 
 # Import new modular components
 from api import RavencolonialAPIClient
@@ -32,7 +34,7 @@ import fleet_carrier_handler
 
 # Plugin metadata
 plugin_name = os.path.basename(os.path.dirname(__file__))
-plugin_version = "1.5.2"
+plugin_version = "1.5.3"
 
 # Setup logging per EDMC documentation
 # A Logger is used per 'found' plugin to make it easy to include the plugin's
@@ -507,6 +509,51 @@ def plugin_stop() -> None:
         logger.info(f"{PluginConfig.NAME} stopped")
 
 
+def check_github_version() -> Optional[str]:
+    """
+    Check GitHub for the latest release version.
+    
+    :return: Latest version string or None if check fails
+    """
+    try:
+        url = "https://api.github.com/repos/toemaus313/ravencolonial_edmc/releases/latest"
+        response = requests.get(url, timeout=5)
+        
+        if response.status_code == 200:
+            data = response.json()
+            latest_version = data.get('tag_name', '').lstrip('v')  # Remove 'v' prefix if present
+            logger.debug(f"Latest GitHub version: {latest_version}")
+            return latest_version
+        else:
+            logger.debug(f"GitHub API returned status {response.status_code}")
+            return None
+    except Exception as e:
+        logger.debug(f"Failed to check GitHub version: {e}")
+        return None
+
+
+def compare_versions(current: str, latest: str) -> bool:
+    """
+    Compare version strings to see if an update is available.
+    Uses simple semantic versioning comparison (major.minor.patch).
+    
+    :param current: Current version string (e.g., "1.5.2")
+    :param latest: Latest version string from GitHub
+    :return: True if latest is newer than current
+    """
+    try:
+        # Parse version strings into tuples of integers
+        # e.g., "1.5.2" becomes (1, 5, 2)
+        current_parts = tuple(int(x) for x in current.split('.'))
+        latest_parts = tuple(int(x) for x in latest.split('.'))
+        
+        # Python compares tuples element by element
+        return latest_parts > current_parts
+    except Exception as e:
+        logger.debug(f"Version comparison failed: {e}")
+        return False
+
+
 def plugin_prefs(parent: nb.Notebook, cmdr: str, is_beta: bool) -> nb.Frame:
     """
     Create settings page for the plugin.
@@ -559,6 +606,47 @@ def plugin_prefs(parent: nb.Notebook, cmdr: str, is_beta: bool) -> nb.Frame:
                              font=('TkDefaultFont', 9), foreground='gray')
     stealth_help.grid(row=4, column=1, sticky=tk.W, padx=10, pady=(0, 10))
     
+    # Version number with update check
+    version_text = tk.StringVar(value=f"Version: {plugin_version} (checking for updates...)")
+    version_label = ttk.Label(frame, textvariable=version_text, 
+                              font=('TkDefaultFont', 9))
+    version_label.grid(row=5, column=0, columnspan=2, sticky=tk.W, padx=10, pady=(10, 5))
+    
+    def check_for_updates():
+        """Check GitHub for updates in background thread"""
+        try:
+            latest = check_github_version()
+            if latest:
+                if compare_versions(plugin_version, latest):
+                    # Update available
+                    version_text.set(f"Version: {plugin_version} (Update available: {latest})")
+                    logger.info(f"Update available: {latest} (current: {plugin_version})")
+                else:
+                    # Up to date
+                    version_text.set(f"Version: {plugin_version} (up to date)")
+            else:
+                # Check failed, just show version
+                version_text.set(f"Version: {plugin_version}")
+        except Exception as e:
+            logger.debug(f"Error checking for updates: {e}")
+            version_text.set(f"Version: {plugin_version}")
+    
+    # Start version check in background thread
+    update_check_thread = Thread(target=check_for_updates, daemon=True)
+    update_check_thread.start()
+    
+    # GitHub link
+    github_url = "https://github.com/toemaus313/ravencolonial_edmc"
+    github_link = ttk.Label(frame, text=github_url, 
+                           font=('TkDefaultFont', 9), foreground='blue', cursor='hand2')
+    github_link.grid(row=6, column=0, columnspan=2, sticky=tk.W, padx=10, pady=(0, 10))
+    
+    def open_github(event):
+        """Open GitHub page in browser"""
+        webbrowser.open(github_url)
+    
+    github_link.bind('<Button-1>', open_github)
+    
     # Save button
     def save_settings():
         """Save the settings to EDMC config"""
@@ -574,7 +662,7 @@ def plugin_prefs(parent: nb.Notebook, cmdr: str, is_beta: bool) -> nb.Frame:
             this.fc_handler.set_stealth_mode(stealth_var.get())
     
     save_button = ttk.Button(frame, text="Save Settings", command=save_settings)
-    save_button.grid(row=5, column=0, columnspan=2, pady=20)
+    save_button.grid(row=7, column=0, columnspan=2, pady=20)
     
     logger.info("Plugin preferences page created successfully")
     return frame

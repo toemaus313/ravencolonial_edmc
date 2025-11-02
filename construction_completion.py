@@ -6,7 +6,6 @@ from Elite Dangerous journal entries, following the same logic as SrvSurvey.
 """
 
 import logging
-import plug
 from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -30,32 +29,52 @@ class ConstructionCompletionHandler:
         :param entry: The journal entry data
         :return: True if construction was complete and handled, False otherwise
         """
+        logger.debug("=" * 80)
+        logger.debug("CONSTRUCTION COMPLETION HANDLER - START")
+        logger.debug(f"Entry keys: {list(entry.keys())}")
+        logger.debug(f"ConstructionComplete flag: {entry.get('ConstructionComplete')}")
+        
         # Check if construction is complete
         if not entry.get('ConstructionComplete', False):
+            logger.debug("Construction not complete - returning False")
             return False
         
         logger.info(f"🎉 Construction complete detected at {self.api_client.current_station}!")
+        logger.debug(f"Current state - System: {self.api_client.current_system}, Station: {self.api_client.current_station}")
+        logger.debug(f"Current state - SystemAddress: {self.api_client.current_system_address}, MarketID: {self.api_client.current_market_id}")
         
         # Validate we have the required data
         if not self.api_client.current_system_address or not self.api_client.current_market_id:
-            logger.warning("Construction complete but missing system address or market ID")
+            logger.warning(f"Construction complete but missing required data - SystemAddress: {self.api_client.current_system_address}, MarketID: {self.api_client.current_market_id}")
+            logger.debug("CONSTRUCTION COMPLETION HANDLER - END (missing data)")
+            logger.debug("=" * 80)
             return True  # Still return True since we detected completion
         
         # Find the associated project
+        logger.debug(f"Fetching project for SystemAddress: {self.api_client.current_system_address}, MarketID: {self.api_client.current_market_id}")
         project = self.api_client.get_project(self.api_client.current_system_address, self.api_client.current_market_id)
+        logger.debug(f"Project fetch result: {project}")
+        
         if not project or not project.get('buildId'):
-            logger.warning("Construction complete but no project found to mark as complete")
+            logger.warning(f"Construction complete but no project found - project data: {project}")
+            logger.debug("CONSTRUCTION COMPLETION HANDLER - END (no project)")
+            logger.debug("=" * 80)
             return True
         
         build_id = project['buildId']
-        logger.info(f"Marking project {build_id} as complete")
+        logger.info(f"Found project to mark complete - BuildID: {build_id}")
+        logger.debug(f"Full project data: {project}")
         
         # Mark the project as complete on the server asynchronously
+        logger.debug(f"Queueing async API call to mark project {build_id} as complete")
         self.mark_project_complete_async(build_id)
         
-        # Show immediate notification to user
+        # Update status for user
+        logger.debug("Showing completion notification to user")
         self._show_completion_notification(build_id)
         
+        logger.debug("CONSTRUCTION COMPLETION HANDLER - END (success)")
+        logger.debug("=" * 80)
         return True
     
     def _mark_project_complete(self, build_id: str) -> bool:
@@ -65,7 +84,17 @@ class ConstructionCompletionHandler:
         :param build_id: The project build ID
         :return: True if successful, False otherwise
         """
-        return self.api_client.mark_project_complete(build_id)
+        logger.debug(f"_mark_project_complete called for BuildID: {build_id}")
+        logger.debug(f"API client type: {type(self.api_client.api_client)}")
+        logger.debug(f"API client has method: {hasattr(self.api_client.api_client, 'mark_project_complete')}")
+        
+        try:
+            result = self.api_client.api_client.mark_project_complete(build_id)
+            logger.debug(f"mark_project_complete returned: {result}")
+            return result
+        except Exception as e:
+            logger.error(f"Exception in _mark_project_complete: {type(e).__name__}: {e}", exc_info=True)
+            raise
     
     def mark_project_complete_async(self, build_id: str):
         """
@@ -73,7 +102,10 @@ class ConstructionCompletionHandler:
         
         :param build_id: The project build ID
         """
+        logger.debug(f"mark_project_complete_async called for BuildID: {build_id}")
+        logger.debug(f"Queueing API call with function: {self._mark_project_complete.__name__}")
         self.api_client.queue_api_call(self._mark_project_complete, build_id)
+        logger.debug("API call queued successfully")
     
     def _show_completion_notification(self, build_id: str):
         """
@@ -81,12 +113,11 @@ class ConstructionCompletionHandler:
         
         :param build_id: The completed project ID
         """
+        logger.debug(f"_show_completion_notification called for BuildID: {build_id}")
+        
         # Update status in main plugin
         completion_message = f"🎉 Construction Complete! Project {build_id} marked as finished."
+        logger.debug(f"Updating status with message: {completion_message}")
         self.api_client.update_status(completion_message)
         
-        # Show popup notification
-        popup_message = f"🎉 Construction Complete at {self.api_client.current_station}! Project has been marked as finished."
-        plug.show_error(popup_message)
-        
-        logger.info(completion_message)
+        logger.info(f"Construction complete - Project {build_id} at {self.api_client.current_station}")

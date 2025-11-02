@@ -216,18 +216,51 @@ class RavencolonialAPIClient:
     
     def mark_project_complete(self, build_id: str) -> bool:
         """Mark a project as complete in Ravencolonial"""
+        logger.debug("=" * 80)
+        logger.debug("API CLIENT - mark_project_complete START")
+        logger.debug(f"BuildID: {build_id}")
+        logger.debug(f"API Base: {self.api_base}")
+        
         try:
             url = f"{self.api_base}/api/project/{urllib.parse.quote(build_id)}/complete"
-            logger.debug(f"Mark complete URL: {url}")
+            logger.debug(f"POST URL: {url}")
+            logger.debug(f"Request timeout: 10s")
+            logger.debug("Sending POST request...")
+            
             response = self.session.post(url, timeout=10)
-            logger.debug(f"Mark complete response status: {response.status_code}")
-            logger.debug(f"Mark complete response body: {response.text}")
+            
+            logger.debug(f"Response received - Status: {response.status_code}")
+            logger.debug(f"Response headers: {dict(response.headers)}")
+            logger.debug(f"Response body: {response.text}")
+            
             response.raise_for_status()
-            logger.info(f"Successfully marked project {build_id} as complete")
+            
+            logger.info(f"✓ Successfully marked project {build_id} as complete")
+            logger.debug("API CLIENT - mark_project_complete END (success)")
+            logger.debug("=" * 80)
             return True
+            
+        except requests.exceptions.Timeout as e:
+            logger.error(f"✗ Timeout marking project complete: {e}")
+            logger.error(f"Request timed out after 10 seconds")
+            logger.debug("API CLIENT - mark_project_complete END (timeout)")
+            logger.debug("=" * 80)
+            return False
+            
+        except requests.exceptions.HTTPError as e:
+            logger.error(f"✗ HTTP error marking project complete: {e}")
+            logger.error(f"Status code: {e.response.status_code if e.response else 'N/A'}")
+            logger.error(f"Response body: {e.response.text if e.response else 'N/A'}")
+            logger.debug("API CLIENT - mark_project_complete END (HTTP error)")
+            logger.debug("=" * 80)
+            return False
+            
         except Exception as e:
-            logger.error(f"Failed to mark project complete: {e}")
-            logger.error(f"Exception details: {type(e).__name__}: {str(e)}")
+            logger.error(f"✗ Unexpected error marking project complete: {e}")
+            logger.error(f"Exception type: {type(e).__name__}")
+            logger.error(f"Exception details: {str(e)}", exc_info=True)
+            logger.debug("API CLIENT - mark_project_complete END (exception)")
+            logger.debug("=" * 80)
             return False
     
     # Fleet Carrier methods
