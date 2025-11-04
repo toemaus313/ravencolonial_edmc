@@ -14,7 +14,7 @@ class PluginConfig:
     
     # Plugin metadata
     NAME = os.path.basename(os.path.dirname(os.path.dirname(__file__)))
-    VERSION = "1.5.0"
+    VERSION = "1.5.3"
     
     # API configuration
     DEFAULT_API_BASE = "https://ravencolonial100-awcbdvabgze4c5cq.canadacentral-01.azurewebsites.net"
@@ -66,3 +66,57 @@ class PluginConfig:
             logger.addHandler(logger_channel)
         
         return logger
+    
+    @staticmethod
+    def get_check_updates() -> bool:
+        """Get whether to check for updates on startup"""
+        try:
+            from config import config
+            return config.get_bool('ravencolonial_check_updates', default=True)
+        except (ImportError, AttributeError):
+            return True
+    
+    @staticmethod
+    def set_check_updates(value: bool):
+        """Set whether to check for updates on startup"""
+        try:
+            from config import config
+            config.set('ravencolonial_check_updates', value)
+        except (ImportError, AttributeError):
+            pass
+    
+    @staticmethod
+    def get_autoupdate() -> bool:
+        """Get whether to automatically install updates"""
+        try:
+            from config import config
+            return config.get_bool('ravencolonial_autoupdate', default=False)
+        except (ImportError, AttributeError):
+            return False
+    
+    @staticmethod
+    def set_autoupdate(value: bool):
+        """Set whether to automatically install updates"""
+        try:
+            from config import config
+            config.set('ravencolonial_autoupdate', value)
+        except (ImportError, AttributeError):
+            pass
+    
+    @staticmethod
+    def get_check_prerelease() -> bool:
+        """Get whether to check for pre-release versions"""
+        try:
+            from config import config
+            return config.get_bool('ravencolonial_check_prerelease', default=False)
+        except (ImportError, AttributeError):
+            return False
+    
+    @staticmethod
+    def set_check_prerelease(value: bool):
+        """Set whether to check for pre-release versions"""
+        try:
+            from config import config
+            config.set('ravencolonial_check_prerelease', value)
+        except (ImportError, AttributeError):
+            pass

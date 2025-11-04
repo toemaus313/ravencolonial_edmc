@@ -8,6 +8,7 @@ import tkinter as tk
 from tkinter import ttk
 import logging
 from typing import Optional
+from threading import Thread
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,8 @@ class UIManager:
         self.status_label: Optional[tk.Label] = None
         self.create_button: Optional[tk.Button] = None
         self.project_link_label: Optional[tk.Label] = None
+        self.update_frame: Optional[tk.Frame] = None
+        self.main_controls_frame: Optional[tk.Frame] = None
     
     def create_plugin_frame(self, parent: tk.Frame) -> tk.Frame:
         """
@@ -36,13 +39,17 @@ class UIManager:
         frame = tk.Frame(parent)
         self.plugin.frame = frame
         
+        # Main controls frame (contains status and buttons)
+        self.main_controls_frame = tk.Frame(frame)
+        self.main_controls_frame.pack(side=tk.TOP, fill=tk.X)
+        
         # Status label
-        self.status_label = tk.Label(frame, text="Ravencolonial: Ready")
+        self.status_label = tk.Label(self.main_controls_frame, text="Ravencolonial: Ready")
         self.status_label.pack(side=tk.LEFT, padx=5)
         self.plugin.status_label = self.status_label
         
         # Project link label (shows when project exists)
-        self.project_link_label = tk.Label(frame, text="", cursor="hand2", fg='blue')
+        self.project_link_label = tk.Label(self.main_controls_frame, text="", cursor="hand2", fg='blue')
         self.project_link_label.pack(side=tk.LEFT, padx=5)
         self.project_link_label.bind("<Button-1>", lambda e: self._open_project_link())
         self.plugin.project_link_label = self.project_link_label
@@ -50,13 +57,16 @@ class UIManager:
         
         # Create project button
         self.create_button = tk.Button(
-            frame, 
+            self.main_controls_frame, 
             text="Create Project (Dock First)",
             command=lambda: self._open_create_dialog(parent),
             state=tk.DISABLED
         )
         self.create_button.pack(side=tk.LEFT, padx=5)
         self.plugin.create_button = self.create_button
+        
+        # Check for updates after a short delay to allow UI to settle
+        frame.after(3000, self._check_and_show_update_notification)
         
         return frame
     
@@ -172,3 +182,122 @@ class UIManager:
                 logger.error(f"Failed to open create dialog: {e}", exc_info=True)
                 from tkinter import messagebox
                 messagebox.showerror("Error", f"Failed to open dialog: {str(e)}")
+    
+    def _check_and_show_update_notification(self):
+        """Check if update is available and show notification if needed"""
+        if self.plugin.update_available and not self.plugin.update_dismissed:
+            self._show_update_notification()
+    
+    def _show_update_notification(self):
+        """Display update notification banner with action buttons"""
+        if self.update_frame:
+            return  # Already showing
+        
+        if not self.plugin.frame:
+            return
+        
+        # Create update notification frame
+        self.update_frame = tk.Frame(self.plugin.frame, relief=tk.RIDGE, borderwidth=2)
+        self.update_frame.pack(side=tk.TOP, fill=tk.X, padx=2, pady=2, before=self.main_controls_frame)
+        
+        # Get version info
+        try:
+            from version_check import CURRENT_VERSION
+            current = CURRENT_VERSION()
+        except:
+            current = "unknown"
+        
+        remote = self.plugin.update_info.remote_version or "unknown"
+        
+        # Info label
+        info_text = f"Update Available: v{current} → v{remote}"
+        info_label = tk.Label(self.update_frame, text=info_text, fg='orange')
+        info_label.grid(row=0, column=0, columnspan=3, padx=5, pady=2)
+        
+        # Buttons
+        btn_download = tk.Button(
+            self.update_frame,
+            text="📥 Go to Download",
+            command=self._open_download_page
+        )
+        btn_download.grid(row=1, column=0, padx=2, pady=2)
+        
+        btn_autoupdate = tk.Button(
+            self.update_frame,
+            text="⚡ Auto-Update",
+            command=self._trigger_autoupdate
+        )
+        btn_autoupdate.grid(row=1, column=1, padx=2, pady=2)
+        
+        btn_dismiss = tk.Button(
+            self.update_frame,
+            text="✖ Dismiss",
+            command=self._dismiss_update_notification
+        )
+        btn_dismiss.grid(row=1, column=2, padx=2, pady=2)
+    
+    def _dismiss_update_notification(self):
+        """Hide the update notification banner"""
+        if self.update_frame:
+            self.update_frame.destroy()
+            self.update_frame = None
+        self.plugin.update_dismissed = True
+    
+    def _open_download_page(self):
+        """Open the GitHub release page in browser"""
+        if self.plugin.update_info:
+            self.plugin.update_info.open_download_page()
+    
+    def _trigger_autoupdate(self):
+        """Manually trigger auto-update in background thread"""
+        if not self.plugin.update_info:
+            return
+        
+        # Disable buttons during update
+        if self.update_frame:
+            for widget in self.update_frame.winfo_children():
+                if isinstance(widget, tk.Button):
+                    widget.config(state=tk.DISABLED)
+        
+        # Show updating message
+        self.update_status("Ravencolonial: Updating...")
+        
+        def update_thread():
+            """Background thread for update installation"""
+            try:
+                logger.info("Manual auto-update triggered")
+                self.plugin.update_info.run_autoupdate()
+                
+                # Success message
+                import plug
+                plug.show_error(
+                    f"Ravencolonial: Update complete! "
+                    f"Restart EDMC to use v{self.plugin.update_info.remote_version}"
+                )
+                
+                # Update UI
+                if self.update_frame:
+                    self.plugin.frame.after(0, self._dismiss_update_notification)
+                if self.status_label:
+                    self.plugin.frame.after(0, lambda: self.update_status("Ravencolonial: Update installed - Restart EDMC"))
+                
+            except Exception as e:
+                logger.error(f"Manual auto-update failed: {e}", exc_info=True)
+                
+                # Error message
+                import plug
+                plug.show_error(f"Ravencolonial: Update failed - {str(e)}")
+                
+                # Re-enable buttons
+                if self.update_frame:
+                    def re_enable():
+                        for widget in self.update_frame.winfo_children():
+                            if isinstance(widget, tk.Button):
+                                widget.config(state=tk.NORMAL)
+                    self.plugin.frame.after(0, re_enable)
+                
+                if self.status_label:
+                    self.plugin.frame.after(0, lambda: self.update_status("Ravencolonial: Update failed"))
+        
+        # Start update in background
+        Thread(target=update_thread, daemon=True, name="manual-autoupdate").start()

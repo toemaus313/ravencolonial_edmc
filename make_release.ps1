@@ -48,9 +48,11 @@ $tempDir = "temp_release"
 $filesToInclude = @(
     "load.py",
     "README.md",
+    "requirements.txt",
     "construction_completion.py",
     "create_project_dialog.py",
     "fleet_carrier_handler.py",
+    "version_check.py",
     "L10n\en.template"
 )
 

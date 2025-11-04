@@ -22,6 +22,7 @@ import create_project_dialog
 import webbrowser
 import requests
 import json
+import time
 
 # Import new modular components
 from api import RavencolonialAPIClient
@@ -31,10 +32,11 @@ from models import ProjectData, SystemSite, ConstructionDepotData, CargoContribu
 from plugin_config import PluginConfig
 import construction_completion
 import fleet_carrier_handler
+import version_check
 
 # Plugin metadata
 plugin_name = os.path.basename(os.path.dirname(__file__))
-plugin_version = "1.5.3"
+plugin_version = "1.5.4"
 
 # Setup logging per EDMC documentation
 # A Logger is used per 'found' plugin to make it easy to include the plugin's
@@ -120,6 +122,15 @@ class RavencolonialPlugin:
         
         # Fleet Carrier handler
         self.fc_handler = fleet_carrier_handler.FleetCarrierHandler(self)
+        
+        # Update checker
+        self.update_info = version_check.UpdateInfo(
+            logger, 
+            plugin_name,
+            allow_prerelease=PluginConfig.get_check_prerelease()
+        )
+        self.update_available = False
+        self.update_dismissed = False
         
     def _api_worker(self):
         """Background worker thread for API calls"""
@@ -489,6 +500,62 @@ def plugin_start3(plugin_dir: str) -> str:
     try:
         this = RavencolonialPlugin()
         logger.info(f"Ravencolonial-EDMC v{PluginConfig.VERSION} loaded")
+        
+        # Start background update check if enabled
+        if PluginConfig.get_check_updates():
+            logger.info("Starting update check in background thread...")
+            
+            def update_check_thread():
+                """Background thread to check for updates"""
+                try:
+                    # Give UI time to initialize
+                    time.sleep(2)
+                    
+                    # Check for updates
+                    result = this.update_info.check()
+                    
+                    if result is None:
+                        logger.warning("Could not check for updates")
+                        return
+                    
+                    # Compare versions
+                    if not this.update_info.is_current_version_outdated():
+                        logger.info("Plugin is up to date")
+                        return
+                    
+                    logger.info(f"Update available: {this.update_info.remote_version}")
+                    this.update_available = True
+                    
+                    # If autoupdate is enabled, install automatically
+                    if PluginConfig.get_autoupdate():
+                        logger.info("Auto-update enabled, installing update...")
+                        try:
+                            this.update_info.run_autoupdate()
+                            # Notify user via EDMC status bar
+                            plug.show_error(
+                                f"{plugin_name}: Update installed! "
+                                f"Restart EDMC to use v{this.update_info.remote_version}"
+                            )
+                        except Exception as e:
+                            logger.error(f"Auto-update failed: {e}", exc_info=True)
+                            plug.show_error(f"{plugin_name}: Auto-update failed. Check logs.")
+                    else:
+                        # Just notify user that update is available
+                        logger.info("Update available but auto-update disabled")
+                        # UI will show the update notification
+                        
+                except Exception as e:
+                    logger.error(f"Update check thread error: {e}", exc_info=True)
+            
+            # Start update check in background
+            Thread(
+                target=update_check_thread,
+                daemon=True,
+                name="ravencolonial-update-check"
+            ).start()
+        else:
+            logger.info("Update checking disabled in settings")
+        
         return plugin_name
     except Exception as e:
         logger.error(f"Failed to initialize: {e}", exc_info=True)
@@ -606,11 +673,35 @@ def plugin_prefs(parent: nb.Notebook, cmdr: str, is_beta: bool) -> nb.Frame:
                              font=('TkDefaultFont', 9), foreground='gray')
     stealth_help.grid(row=4, column=1, sticky=tk.W, padx=10, pady=(0, 10))
     
+    # Update Settings Section
+    update_section_label = ttk.Label(frame, text="Update Settings:", font=('TkDefaultFont', 10, 'bold'))
+    update_section_label.grid(row=5, column=0, columnspan=2, sticky=tk.W, padx=10, pady=(10, 5))
+    
+    # Check for updates checkbox
+    check_updates_var = tk.BooleanVar(value=PluginConfig.get_check_updates())
+    check_updates_check = ttk.Checkbutton(frame, text="Check for updates on startup", variable=check_updates_var)
+    check_updates_check.grid(row=6, column=0, columnspan=2, sticky=tk.W, padx=10, pady=2)
+    
+    # Auto-update checkbox
+    autoupdate_var = tk.BooleanVar(value=PluginConfig.get_autoupdate())
+    autoupdate_check = ttk.Checkbutton(frame, text="Automatically install updates", variable=autoupdate_var)
+    autoupdate_check.grid(row=7, column=0, columnspan=2, sticky=tk.W, padx=10, pady=2)
+    
+    # Check pre-releases checkbox
+    prerelease_var = tk.BooleanVar(value=PluginConfig.get_check_prerelease())
+    prerelease_check = ttk.Checkbutton(frame, text="Include pre-release versions", variable=prerelease_var)
+    prerelease_check.grid(row=8, column=0, columnspan=2, sticky=tk.W, padx=10, pady=2)
+    
+    # Update settings help text
+    update_help = ttk.Label(frame, text="⚠️ Auto-update requires EDMC restart to apply. Use cautiously.", 
+                            font=('TkDefaultFont', 9), foreground='gray')
+    update_help.grid(row=9, column=1, sticky=tk.W, padx=10, pady=(0, 10))
+    
     # Version number with update check
     version_text = tk.StringVar(value=f"Version: {plugin_version} (checking for updates...)")
     version_label = ttk.Label(frame, textvariable=version_text, 
                               font=('TkDefaultFont', 9))
-    version_label.grid(row=5, column=0, columnspan=2, sticky=tk.W, padx=10, pady=(10, 5))
+    version_label.grid(row=10, column=0, columnspan=2, sticky=tk.W, padx=10, pady=(10, 5))
     
     def check_for_updates():
         """Check GitHub for updates in background thread"""
@@ -639,7 +730,7 @@ def plugin_prefs(parent: nb.Notebook, cmdr: str, is_beta: bool) -> nb.Frame:
     github_url = "https://github.com/toemaus313/ravencolonial_edmc"
     github_link = ttk.Label(frame, text=github_url, 
                            font=('TkDefaultFont', 9), foreground='blue', cursor='hand2')
-    github_link.grid(row=6, column=0, columnspan=2, sticky=tk.W, padx=10, pady=(0, 10))
+    github_link.grid(row=11, column=0, columnspan=2, sticky=tk.W, padx=10, pady=(0, 10))
     
     def open_github(event):
         """Open GitHub page in browser"""
@@ -653,6 +744,11 @@ def plugin_prefs(parent: nb.Notebook, cmdr: str, is_beta: bool) -> nb.Frame:
         config.set('ravencolonial_api_key', api_key_var.get())
         config.set('ravencolonial_stealth_mode', stealth_var.get())
         
+        # Save update settings
+        PluginConfig.set_check_updates(check_updates_var.get())
+        PluginConfig.set_autoupdate(autoupdate_var.get())
+        PluginConfig.set_check_prerelease(prerelease_var.get())
+        
         # Update API client credentials if plugin is loaded
         if this and api_key_var.get():
             this.api_client.set_credentials(cmdr, api_key_var.get())
@@ -660,9 +756,13 @@ def plugin_prefs(parent: nb.Notebook, cmdr: str, is_beta: bool) -> nb.Frame:
         # Update Fleet Carrier stealth mode if plugin is loaded
         if this and hasattr(this, 'fc_handler'):
             this.fc_handler.set_stealth_mode(stealth_var.get())
+        
+        # Update the update checker's prerelease setting if plugin is loaded
+        if this and hasattr(this, 'update_info'):
+            this.update_info._beta = prerelease_var.get()
     
     save_button = ttk.Button(frame, text="Save Settings", command=save_settings)
-    save_button.grid(row=7, column=0, columnspan=2, pady=20)
+    save_button.grid(row=12, column=0, columnspan=2, pady=20)
     
     logger.info("Plugin preferences page created successfully")
     return frame
