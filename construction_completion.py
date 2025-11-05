@@ -62,8 +62,17 @@ class ConstructionCompletionHandler:
             return True
         
         build_id = project['buildId']
-        logger.info(f"Found project to mark complete - BuildID: {build_id}")
+        build_name = project.get('buildName', '')
+        logger.info(f"Found project to mark complete - BuildID: {build_id}, BuildName: {build_name}")
         logger.debug(f"Full project data: {project}")
+        
+        # Check if buildName has a construction site prefix and strip it
+        cleaned_name = self._strip_construction_site_prefix(build_name)
+        if cleaned_name != build_name:
+            logger.info(f"Stripping construction site prefix from buildName: '{build_name}' -> '{cleaned_name}'")
+            # Update the project name first before marking complete
+            logger.debug(f"Queueing async API call to update project {build_id} name")
+            self.api_client.queue_api_call(self._update_project_name, build_id, cleaned_name)
         
         # Mark the project as complete on the server asynchronously
         logger.debug(f"Queueing async API call to mark project {build_id} as complete")
@@ -106,6 +115,37 @@ class ConstructionCompletionHandler:
         logger.debug(f"Queueing API call with function: {self._mark_project_complete.__name__}")
         self.api_client.queue_api_call(self._mark_project_complete, build_id)
         logger.debug("API call queued successfully")
+    
+    def _strip_construction_site_prefix(self, build_name: str) -> str:
+        """
+        Strip "Planetary Construction Site: " or "Orbital Construction Site: " prefix from build name
+        
+        :param build_name: The original build name
+        :return: The cleaned build name
+        """
+        if build_name.startswith('Planetary Construction Site: '):
+            return build_name[len('Planetary Construction Site: '):]
+        elif build_name.startswith('Orbital Construction Site: '):
+            return build_name[len('Orbital Construction Site: '):]
+        return build_name
+    
+    def _update_project_name(self, build_id: str, new_name: str) -> bool:
+        """
+        Update a project's buildName via PATCH request
+        
+        :param build_id: The project build ID
+        :param new_name: The new build name (without prefix)
+        :return: True if successful, False otherwise
+        """
+        logger.debug(f"_update_project_name called for BuildID: {build_id}, new name: {new_name}")
+        
+        try:
+            result = self.api_client.api_client.update_project_name(build_id, new_name)
+            logger.debug(f"update_project_name returned: {result}")
+            return result
+        except Exception as e:
+            logger.error(f"Exception in _update_project_name: {type(e).__name__}: {e}", exc_info=True)
+            return False
     
     def _show_completion_notification(self, build_id: str):
         """

@@ -36,7 +36,7 @@ import version_check
 
 # Plugin metadata
 plugin_name = os.path.basename(os.path.dirname(__file__))
-plugin_version = "1.5.5"
+plugin_version = "1.5.6-beta1"
 
 # Setup logging per EDMC documentation
 # A Logger is used per 'found' plugin to make it easy to include the plugin's
@@ -603,16 +603,34 @@ def compare_versions(current: str, latest: str) -> bool:
     """
     Compare version strings to see if an update is available.
     Uses simple semantic versioning comparison (major.minor.patch).
+    Handles pre-release versions (e.g., "1.5.6-beta1").
     
-    :param current: Current version string (e.g., "1.5.2")
+    :param current: Current version string (e.g., "1.5.2" or "1.5.6-beta1")
     :param latest: Latest version string from GitHub
     :return: True if latest is newer than current
     """
     try:
-        # Parse version strings into tuples of integers
-        # e.g., "1.5.2" becomes (1, 5, 2)
-        current_parts = tuple(int(x) for x in current.split('.'))
-        latest_parts = tuple(int(x) for x in latest.split('.'))
+        # Remove 'v' prefix if present
+        current = current.lstrip('v')
+        latest = latest.lstrip('v')
+        
+        # Extract numeric version parts (ignore pre-release suffix)
+        def extract_numeric(version: str) -> tuple:
+            parts = []
+            for part in version.split('.'):
+                # Extract only leading digits from each part
+                numeric = ''
+                for char in part:
+                    if char.isdigit():
+                        numeric += char
+                    else:
+                        break  # Stop at first non-digit (e.g., '-' in '6-beta1')
+                if numeric:
+                    parts.append(int(numeric))
+            return tuple(parts[:3])  # Limit to 3 parts (major.minor.patch)
+        
+        current_parts = extract_numeric(current)
+        latest_parts = extract_numeric(latest)
         
         # Python compares tuples element by element
         return latest_parts > current_parts
@@ -649,13 +667,13 @@ def plugin_prefs(parent: nb.Notebook, cmdr: str, is_beta: bool) -> nb.Frame:
     except:
         api_key_value = ''
     
-    api_key_var = tk.StringVar(value=api_key_value)
-    api_key_entry = ttk.Entry(frame, textvariable=api_key_var, width=40, show="*")
+    # Store as frame attribute to prevent garbage collection
+    frame.api_key_var = tk.StringVar(value=api_key_value)
+    api_key_entry = ttk.Entry(frame, textvariable=frame.api_key_var, width=40, show="*")
     api_key_entry.grid(row=1, column=1, sticky=tk.W, padx=10, pady=5)
     
     # API Key help text
-    api_key_help = ttk.Label(frame, text="Get your API key from Ravencolonial account settings", 
-                             font=('TkDefaultFont', 9), foreground='gray')
+    api_key_help = nb.Label(frame, text="Get your API key from Ravencolonial account settings")
     api_key_help.grid(row=2, column=1, sticky=tk.W, padx=10, pady=(0, 10))
     
     # Stealth Mode checkbox
@@ -664,72 +682,88 @@ def plugin_prefs(parent: nb.Notebook, cmdr: str, is_beta: bool) -> nb.Frame:
     except:
         stealth_value = False
     
-    stealth_var = tk.BooleanVar(value=stealth_value)
-    stealth_check = ttk.Checkbutton(frame, text="Stealth Mode", variable=stealth_var)
+    # Store as frame attribute to prevent garbage collection
+    frame.stealth_var = tk.BooleanVar(value=stealth_value)
+    stealth_check = ttk.Checkbutton(frame, text="Stealth Mode", variable=frame.stealth_var)
     stealth_check.grid(row=3, column=0, columnspan=2, sticky=tk.W, padx=10, pady=5)
     
     # Stealth Mode help text
-    stealth_help = ttk.Label(frame, text="When enabled, stops sending Fleet Carrier commodity data to Ravencolonial", 
-                             font=('TkDefaultFont', 9), foreground='gray')
+    stealth_help = nb.Label(frame, text="When enabled, stops sending Fleet Carrier commodity data to Ravencolonial")
     stealth_help.grid(row=4, column=1, sticky=tk.W, padx=10, pady=(0, 10))
     
     # Update Settings Section
     update_section_label = ttk.Label(frame, text="Update Settings:", font=('TkDefaultFont', 10, 'bold'))
     update_section_label.grid(row=5, column=0, columnspan=2, sticky=tk.W, padx=10, pady=(10, 5))
     
-    # Check for updates checkbox
-    check_updates_var = tk.BooleanVar(value=PluginConfig.get_check_updates())
-    check_updates_check = ttk.Checkbutton(frame, text="Check for updates on startup", variable=check_updates_var)
+    # Check for updates checkbox - store as frame attribute
+    frame.check_updates_var = tk.BooleanVar(value=PluginConfig.get_check_updates())
+    check_updates_check = ttk.Checkbutton(frame, text="Check for updates on startup", variable=frame.check_updates_var)
     check_updates_check.grid(row=6, column=0, columnspan=2, sticky=tk.W, padx=10, pady=2)
     
-    # Auto-update checkbox
-    autoupdate_var = tk.BooleanVar(value=PluginConfig.get_autoupdate())
-    autoupdate_check = ttk.Checkbutton(frame, text="Automatically install updates", variable=autoupdate_var)
+    # Auto-update checkbox - store as frame attribute
+    frame.autoupdate_var = tk.BooleanVar(value=PluginConfig.get_autoupdate())
+    autoupdate_check = ttk.Checkbutton(frame, text="Automatically install updates", variable=frame.autoupdate_var)
     autoupdate_check.grid(row=7, column=0, columnspan=2, sticky=tk.W, padx=10, pady=2)
     
-    # Check pre-releases checkbox
-    prerelease_var = tk.BooleanVar(value=PluginConfig.get_check_prerelease())
-    prerelease_check = ttk.Checkbutton(frame, text="Include pre-release versions", variable=prerelease_var)
+    # Check pre-releases checkbox - store as frame attribute
+    frame.prerelease_var = tk.BooleanVar(value=PluginConfig.get_check_prerelease())
+    prerelease_check = ttk.Checkbutton(frame, text="Include pre-release versions", variable=frame.prerelease_var)
     prerelease_check.grid(row=8, column=0, columnspan=2, sticky=tk.W, padx=10, pady=2)
     
     # Update settings help text
-    update_help = ttk.Label(frame, text="⚠️ Auto-update requires EDMC restart to apply. Use cautiously.", 
-                            font=('TkDefaultFont', 9), foreground='gray')
+    update_help = nb.Label(frame, text="Auto-update requires EDMC restart to apply. Use cautiously.")
     update_help.grid(row=9, column=1, sticky=tk.W, padx=10, pady=(0, 10))
     
     # Version number with update check
-    version_text = tk.StringVar(value=f"Version: {plugin_version} (checking for updates...)")
-    version_label = ttk.Label(frame, textvariable=version_text, 
-                              font=('TkDefaultFont', 9))
-    version_label.grid(row=10, column=0, columnspan=2, sticky=tk.W, padx=10, pady=(10, 5))
+    # Store as frame attributes to prevent garbage collection
+    frame.version_text = tk.StringVar(value=f"Version: {plugin_version} (checking for updates...)")
+    frame.version_label = nb.Label(frame, textvariable=frame.version_text)
+    frame.version_label.grid(row=10, column=0, columnspan=2, sticky=tk.W, padx=10, pady=(10, 5))
     
     def check_for_updates():
         """Check GitHub for updates in background thread"""
         try:
             latest = check_github_version()
+            
+            # Check if frame still exists before updating
+            if not frame.winfo_exists():
+                logger.debug("Settings frame no longer exists, skipping version update")
+                return
+            
             if latest:
+                logger.debug(f"Comparing versions: current={plugin_version}, latest={latest}")
                 if compare_versions(plugin_version, latest):
                     # Update available
-                    version_text.set(f"Version: {plugin_version} (Update available: {latest})")
+                    frame.version_text.set(f"Version: {plugin_version} (Update available: {latest})")
                     logger.info(f"Update available: {latest} (current: {plugin_version})")
                 else:
                     # Up to date
-                    version_text.set(f"Version: {plugin_version} (up to date)")
+                    frame.version_text.set(f"Version: {plugin_version} (up to date)")
+                    logger.debug(f"Plugin is up to date: {plugin_version}")
             else:
                 # Check failed, just show version
-                version_text.set(f"Version: {plugin_version}")
+                logger.debug("GitHub version check returned None, showing version only")
+                frame.version_text.set(f"Version: {plugin_version}")
+        except tk.TclError as e:
+            logger.debug(f"Frame destroyed before update could be displayed: {e}")
         except Exception as e:
-            logger.debug(f"Error checking for updates: {e}")
-            version_text.set(f"Version: {plugin_version}")
+            logger.warning(f"Error checking for updates: {e}", exc_info=True)
+            # Always show version even if check fails
+            try:
+                if frame.winfo_exists():
+                    frame.version_text.set(f"Version: {plugin_version}")
+            except Exception as e2:
+                logger.error(f"Failed to set version text: {e2}", exc_info=True)
     
     # Start version check in background thread
-    update_check_thread = Thread(target=check_for_updates, daemon=True)
-    update_check_thread.start()
+    frame.update_check_thread = Thread(target=check_for_updates, daemon=True)
+    frame.update_check_thread.start()
     
     # GitHub link
     github_url = "https://github.com/toemaus313/ravencolonial_edmc"
-    github_link = ttk.Label(frame, text=github_url, 
-                           font=('TkDefaultFont', 9), foreground='blue', cursor='hand2')
+    github_link = nb.Label(frame, text=github_url)
+    github_link['cursor'] = 'hand2'
+    github_link['foreground'] = 'blue'  # Set separately to avoid theme issues
     github_link.grid(row=11, column=0, columnspan=2, sticky=tk.W, padx=10, pady=(0, 10))
     
     def open_github(event):
@@ -741,25 +775,25 @@ def plugin_prefs(parent: nb.Notebook, cmdr: str, is_beta: bool) -> nb.Frame:
     # Save button
     def save_settings():
         """Save the settings to EDMC config"""
-        config.set('ravencolonial_api_key', api_key_var.get())
-        config.set('ravencolonial_stealth_mode', stealth_var.get())
+        config.set('ravencolonial_api_key', frame.api_key_var.get())
+        config.set('ravencolonial_stealth_mode', frame.stealth_var.get())
         
         # Save update settings
-        PluginConfig.set_check_updates(check_updates_var.get())
-        PluginConfig.set_autoupdate(autoupdate_var.get())
-        PluginConfig.set_check_prerelease(prerelease_var.get())
+        PluginConfig.set_check_updates(frame.check_updates_var.get())
+        PluginConfig.set_autoupdate(frame.autoupdate_var.get())
+        PluginConfig.set_check_prerelease(frame.prerelease_var.get())
         
         # Update API client credentials if plugin is loaded
-        if this and api_key_var.get():
-            this.api_client.set_credentials(cmdr, api_key_var.get())
+        if this and frame.api_key_var.get():
+            this.api_client.set_credentials(cmdr, frame.api_key_var.get())
         
         # Update Fleet Carrier stealth mode if plugin is loaded
         if this and hasattr(this, 'fc_handler'):
-            this.fc_handler.set_stealth_mode(stealth_var.get())
+            this.fc_handler.set_stealth_mode(frame.stealth_var.get())
         
         # Update the update checker's prerelease setting if plugin is loaded
         if this and hasattr(this, 'update_info'):
-            this.update_info._beta = prerelease_var.get()
+            this.update_info._beta = frame.prerelease_var.get()
     
     save_button = ttk.Button(frame, text="Save Settings", command=save_settings)
     save_button.grid(row=12, column=0, columnspan=2, pady=20)

@@ -214,6 +214,45 @@ class RavencolonialAPIClient:
             logger.error(f"Failed to get system architect: {e}")
             return None
     
+    def update_project_name(self, build_id: str, new_name: str) -> bool:
+        """Update a project's buildName via PATCH
+        
+        :param build_id: The project build ID
+        :param new_name: The new build name (without prefix)
+        :return: True if successful, False otherwise
+        """
+        logger.debug("=" * 80)
+        logger.debug("API CLIENT - update_project_name START")
+        logger.debug(f"BuildID: {build_id}")
+        logger.debug(f"New name: {new_name}")
+        logger.debug(f"API Base: {self.api_base}")
+        
+        try:
+            url = f"{self.api_base}/api/project/{urllib.parse.quote(build_id)}"
+            payload = {"buildName": new_name}
+            
+            logger.debug(f"PATCH URL: {url}")
+            logger.debug(f"Payload: {payload}")
+            logger.debug("Sending PATCH request...")
+            
+            response = self.session.patch(url, json=payload, timeout=10)
+            
+            logger.debug(f"Response received - Status: {response.status_code}")
+            logger.debug(f"Response body: {response.text}")
+            
+            response.raise_for_status()
+            
+            logger.info(f"✓ Successfully updated project {build_id} name to: {new_name}")
+            logger.debug("API CLIENT - update_project_name END (success)")
+            logger.debug("=" * 80)
+            return True
+            
+        except Exception as e:
+            logger.error(f"✗ Error updating project name: {e}", exc_info=True)
+            logger.debug("API CLIENT - update_project_name END (error)")
+            logger.debug("=" * 80)
+            return False
+    
     def mark_project_complete(self, build_id: str) -> bool:
         """Mark a project as complete in Ravencolonial"""
         logger.debug("=" * 80)

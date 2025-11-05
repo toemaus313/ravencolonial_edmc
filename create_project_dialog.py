@@ -393,7 +393,7 @@ class CreateProjectDialog:
         self.body_var = tk.StringVar()
         self.body_combo = ttk.Combobox(main_frame, textvariable=self.body_var, width=40)
         # Populate with bodies from combined data
-        body_options = []
+        body_options = [plugin_tl("<None>")]  # Add <None> option at the beginning
         logger.debug(f"Creating body dropdown from {len(self.available_bodies)} combined bodies")
         
         for body_num, body_info in self.available_bodies.items():
@@ -407,30 +407,20 @@ class CreateProjectDialog:
             body_options.append(display_name)
             logger.debug(f"Added body option: {display_name}")
         
-        # Sort options by body name for better UX
-        body_options.sort(key=lambda x: x.split(' [ID:')[0])
+        # Sort body options (excluding <None>) by body name for better UX
+        none_option = body_options[0]
+        body_list = body_options[1:]
+        body_list.sort(key=lambda x: x.split(' [ID:')[0])
+        body_options = [none_option] + body_list
         
         if body_options:
             self.body_combo['values'] = body_options
+            self.body_combo.bind('<<ComboboxSelected>>', self._on_body_selected)
             logger.debug(f"Body dropdown populated with {len(body_options)} options from combined data")
-            # Pre-select current body if available
-            if self.plugin.body_num and str(self.plugin.body_num) in self.available_bodies:
-                current_body_info = self.available_bodies[str(self.plugin.body_num)]
-                current_body_name = current_body_info.get('name', f'Body {self.plugin.body_num}')
-                current_body_type = current_body_info.get('type', '')
-                if current_body_type:
-                    display_name = f"{current_body_name} ({current_body_type}) [ID: {self.plugin.body_num}]"
-                else:
-                    display_name = f"{current_body_name} [ID: {self.plugin.body_num}]"
-                if display_name in body_options:
-                    self.body_var.set(display_name)
-                    logger.debug(f"Pre-selected current body: {display_name}")
-                else:
-                    self.body_var.set(body_options[0])
-                    logger.debug(f"Pre-selected first body (current not found): {body_options[0]}")
-            else:
-                self.body_var.set(body_options[0])
-                logger.debug(f"Pre-selected first body: {body_options[0]}")
+            
+            # Default to <None> to show all pre-planned sites
+            self.body_var.set(none_option)
+            logger.debug(f"Default body selection: {none_option}")
         else:
             logger.warning("No body options available from combined data")
         
@@ -459,20 +449,19 @@ class CreateProjectDialog:
             self.site_var = tk.StringVar()
             self.site_combo = ttk.Combobox(main_frame, textvariable=self.site_var, 
                                           state='readonly', width=40)
-            site_options = [plugin_tl("<None - Create New>")]
-            self.site_id_map = {plugin_tl("<None - Create New>"): None}
-            self.site_data_map = {"<None - Create New>": None}  # Store full site data
-            for site in self.system_sites:
-                site_name = site.get('name', 'Unknown')
-                site_type = site.get('buildType', '')
-                display_name = f"{site_name} ({site_type})"
-                site_options.append(display_name)
-                self.site_id_map[display_name] = site.get('id')
-                self.site_data_map[display_name] = site  # Store complete site data
-            self.site_combo['values'] = site_options
-            self.site_combo.current(0)
+            
+            # Populate initial site list (unsorted)
+            self._populate_site_list()
+            
             self.site_combo.bind('<<ComboboxSelected>>', self._on_site_selected)
             self.site_combo.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=2)
+            
+            # Add alphabetical sort checkbox
+            self.site_sort_var = tk.BooleanVar(value=False)
+            sort_checkbox = ttk.Checkbutton(main_frame, text=plugin_tl("Alphabetical Sort"),
+                                           variable=self.site_sort_var,
+                                           command=self._on_site_sort_changed)
+            sort_checkbox.grid(row=row, column=2, sticky=tk.W, padx=(5, 0), pady=2)
             row += 1
         
         # Notes
@@ -506,6 +495,97 @@ class CreateProjectDialog:
         else:
             self.model_combo['values'] = []
             self.model_var.set('')
+    
+    def _populate_site_list(self, filtered_body_num=None):
+        """Populate the Pre-Planned Sites list with optional body filtering and sorting
+        
+        Args:
+            filtered_body_num: If provided, only show sites for this body number
+        """
+        site_options = [plugin_tl("<None - Create New>")]
+        self.site_id_map = {plugin_tl("<None - Create New>"): None}
+        self.site_data_map = {"<None - Create New>": None}
+        
+        # Build list of sites
+        sites_to_display = []
+        for site in self.system_sites:
+            # Filter by bodyNum if specified
+            if filtered_body_num is not None:
+                site_body_num = site.get('bodyNum')
+                if site_body_num != filtered_body_num:
+                    continue
+            
+            site_name = site.get('name', 'Unknown')
+            site_type = site.get('buildType', '')
+            display_name = f"{site_name} ({site_type})"
+            sites_to_display.append((display_name, site))
+        
+        # Sort alphabetically if checkbox is checked
+        if hasattr(self, 'site_sort_var') and self.site_sort_var.get():
+            sites_to_display.sort(key=lambda x: x[0])
+            logger.debug("Sites sorted alphabetically")
+        else:
+            logger.debug("Sites in default order")
+        
+        # Add to options
+        for display_name, site in sites_to_display:
+            site_options.append(display_name)
+            self.site_id_map[display_name] = site.get('id')
+            self.site_data_map[display_name] = site
+        
+        # Update combo box
+        self.site_combo['values'] = site_options
+        self.site_combo.current(0)
+        
+        logger.debug(f"Populated {len(site_options) - 1} sites" + 
+                    (f" for body {filtered_body_num}" if filtered_body_num else ""))
+    
+    def _on_site_sort_changed(self):
+        """Handle alphabetical sort checkbox toggle"""
+        # Get current body filter if active
+        filtered_body_num = None
+        selected_body_display = self.body_var.get()
+        
+        # Check if a specific body is selected (not <None>)
+        if selected_body_display and selected_body_display != "<None>" and '[ID:' in selected_body_display:
+            try:
+                body_num_str = selected_body_display.split('[ID:')[1].split(']')[0].strip()
+                filtered_body_num = int(body_num_str)
+            except (ValueError, IndexError):
+                pass
+        
+        # Repopulate list with new sorting
+        self._populate_site_list(filtered_body_num)
+        logger.info(f"Site sort changed: alphabetical={self.site_sort_var.get()}")
+    
+    def _on_body_selected(self, event=None):
+        """Handle body selection - filter pre-planned sites by selected body"""
+        if not hasattr(self, 'site_combo'):
+            return  # No site combo exists, nothing to filter
+        
+        selected_body_display = self.body_var.get()
+        logger.debug(f"Body selected: '{selected_body_display}'")
+        
+        # Check if <None> is selected
+        if selected_body_display == "<None>":
+            # Show all sites (no filter)
+            self._populate_site_list(None)
+            logger.debug("Showing all pre-planned sites (no body filter)")
+            return
+        
+        # Extract bodyNum from display name format: "Body Name [ID: 123]"
+        selected_body_num = None
+        if '[ID:' in selected_body_display:
+            try:
+                body_num_str = selected_body_display.split('[ID:')[1].split(']')[0].strip()
+                selected_body_num = int(body_num_str)
+                logger.debug(f"Extracted bodyNum: {selected_body_num}")
+            except (ValueError, IndexError) as e:
+                logger.warning(f"Failed to extract bodyNum from '{selected_body_display}': {e}")
+                return
+        
+        # Use helper method to populate with current sort setting
+        self._populate_site_list(selected_body_num)
     
     def _on_site_selected(self, event=None):
         """Handle pre-planned site selection - auto-populate construction type, model, and body"""

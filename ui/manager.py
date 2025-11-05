@@ -12,6 +12,12 @@ from threading import Thread
 
 logger = logging.getLogger(__name__)
 
+# ========== TEMPORARY TESTING BYPASS ==========
+# Set to True to always enable Create Project button for testing
+# TODO: Remove this bypass after testing is complete
+TESTING_BYPASS_CREATE_BUTTON = False
+# ==============================================
+
 
 class UIManager:
     """Manages UI elements and state for the Ravencolonial plugin"""
@@ -86,6 +92,16 @@ class UIManager:
         
         if not self.create_button:
             return
+        
+        # ========== TEMPORARY TESTING BYPASS ==========
+        if TESTING_BYPASS_CREATE_BUTTON:
+            logger.warning("TESTING BYPASS ACTIVE - Create Project button always enabled")
+            self.create_button['state'] = tk.NORMAL
+            self.create_button['text'] = "🚧 Create Project [TEST MODE]"
+            if self.plugin.frame:
+                self.create_button['command'] = lambda: self._open_create_dialog(self.plugin.frame.master)
+            return
+        # ==============================================
         
         # Check if we're at a construction ship
         if self.plugin.is_docked and self.plugin.current_market_id and self.plugin.is_construction_ship:
