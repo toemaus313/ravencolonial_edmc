@@ -54,6 +54,14 @@ class CreateProjectDialog:
         if plugin.current_system:
             logger.debug(f"Fetching system sites for: {plugin.current_system}")
             self.system_sites = plugin.get_system_sites(plugin.current_system)
+            
+            # Filter out completed and build sites
+            original_count = len(self.system_sites)
+            self.system_sites = [site for site in self.system_sites if site.get('status') not in ('complete', 'build')]
+            filtered_count = original_count - len(self.system_sites)
+            if filtered_count > 0:
+                logger.debug(f"Filtered out {filtered_count} completed/build sites")
+            
             logger.debug(f"Fetched {len(self.system_sites)} system sites")
             if self.system_sites:
                 logger.debug(f"Sample site data: {self.system_sites[0]}")
@@ -467,13 +475,6 @@ class CreateProjectDialog:
             self.site_combo.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=2)
             row += 1
         
-        # Primary Port checkbox
-        self.is_primary_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(main_frame, text=plugin_tl("This is the primary port in the system"),
-                       variable=self.is_primary_var).grid(row=row, column=0, columnspan=2, 
-                                                          sticky=tk.W, pady=5)
-        row += 1
-        
         # Notes
         ttk.Label(main_frame, text=plugin_tl("Notes:")).grid(row=row, column=0, sticky=(tk.W, tk.N), pady=2)
         self.notes_text = tk.Text(main_frame, width=40, height=6)
@@ -598,6 +599,12 @@ class CreateProjectDialog:
                 # Extract the part after the semicolon (the actual name)
                 station_name = station_name.split(';', 1)[1].strip()
             
+            # Trim construction site prefixes
+            if station_name.startswith('Planetary Construction Site: '):
+                station_name = station_name[len('Planetary Construction Site: '):]
+            elif station_name.startswith('Orbital Construction Site: '):
+                station_name = station_name[len('Orbital Construction Site: '):]
+            
             # Use only the station name, not the system
             self.name_var.set(station_name)
     
@@ -680,7 +687,6 @@ class CreateProjectDialog:
             "systemAddress": int(self.plugin.current_system_address),
             "systemName": self.plugin.current_system,
             "starPos": self.plugin.star_pos or [0.0, 0.0, 0.0],
-            "isPrimaryPort": self.is_primary_var.get(),
             "commodities": commodities,
             "maxNeed": max_need,
             "architectName": arch_name,
