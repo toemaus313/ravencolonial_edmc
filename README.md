@@ -60,20 +60,24 @@ The Ravencolonial plugin includes a settings page in EDMC where you can configur
 
 1. **Download the Plugin**
    - Download the latest release from this repository
-   - Or clone: `git clone https://github.com/[your-username]/Ravencolonial-EDMC.git`
 
 2. **Install to EDMC**
    - Locate your EDMC plugins folder:
      - **Windows**: `%LOCALAPPDATA%\EDMarketConnector\plugins`
-     - **Mac**: `~/Library/Application Support/EDMarketConnector/plugins`
      - **Linux**: `~/.local/share/EDMarketConnector/plugins`
    
-   - Create a folder named `Ravencolonial-EDMC` in the plugins directory
-   - Copy `load.py` into the `Ravencolonial-EDMC` folder
+   - Unzip the Ravencolonial-EDMC folder to the plugins folder
 
 3. **Restart EDMC**
    - Close and restart EDMC
    - The plugin should appear in the EDMC UI and settings
+
+4. **Configure the Plugin**
+   - Go to **Settings** (click the gear icon)
+   - Select the **Ravencolonial** tab
+   - Configure your API key and Stealth Mode preference (optional)
+   - Configure auto-update preferences
+   - Click **Save Settings**
 
 ## Usage
 
@@ -132,6 +136,11 @@ This plugin is licensed under the GNU General Public License v2.0 or later, cons
 - **SRVSurvey Discord**: [Guardian Science Corps](https://discord.gg/GJjTFa9fsz)
 
 ## Version History
+
+### v1.5.6 (2025-11-05)
+- Improved compatibility for auto-updates
+- Improvements to filtering in Create Project dialog
+- 
 
 ### v1.5.1 (2025-11-01)
 - Added support for Fleet Carrier
