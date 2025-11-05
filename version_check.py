@@ -290,45 +290,37 @@ class UpdateInfo:
                 self._logger.info(f"Extracted to {tmp_dir}")
                 os.remove(zip_path)
                 
-                # Find the plugin folder inside the extracted content
-                # The ZIP should extract to: Ravencolonial-EDMC-vX.Y.Z/
-                # containing the plugin files directly
-                zip_dirs = [
-                    f for f in os.listdir(tmp_dir)
-                    if os.path.isdir(os.path.join(tmp_dir, f))
-                ]
+                # Determine ZIP structure
+                # Standard format: files in subdirectory (load.py in tmp_dir/Ravencolonial-EDMC/)
+                # Legacy fallback: files at root (load.py in tmp_dir) - only for emergency fixes
+                load_py_path = os.path.join(tmp_dir, "load.py")
                 
-                if len(zip_dirs) != 1:
-                    raise ValueError(
-                        f"Expected 1 folder in ZIP, found {len(zip_dirs)}: {zip_dirs}"
-                    )
-                
-                extracted_plugin_dir = os.path.join(tmp_dir, zip_dirs[0])
-                self._logger.debug(f"Extracted folder: {extracted_plugin_dir}")
-                
-                # Check if this folder contains load.py (indicating it's the plugin folder)
-                # or if it contains a subdirectory with the plugin files
-                load_py_path = os.path.join(extracted_plugin_dir, "load.py")
                 if os.path.exists(load_py_path):
-                    # Plugin files are directly in this folder
-                    plugin_source_dir = extracted_plugin_dir
-                    self._logger.debug(f"Plugin files found directly in: {plugin_source_dir}")
+                    # Legacy format: files at root (fallback only)
+                    self._logger.debug("Detected legacy ZIP format (files at root)")
+                    plugin_source_dir = tmp_dir
                 else:
-                    # Look for a subdirectory that contains load.py
-                    subdirs = [
-                        f for f in os.listdir(extracted_plugin_dir)
-                        if os.path.isdir(os.path.join(extracted_plugin_dir, f))
+                    # Standard format: files in subdirectory
+                    self._logger.debug("Detected standard ZIP format (files in subdirectory)")
+                    zip_dirs = [
+                        f for f in os.listdir(tmp_dir)
+                        if os.path.isdir(os.path.join(tmp_dir, f))
                     ]
+                    
+                    if len(zip_dirs) == 0:
+                        raise ValueError(f"No directories found in ZIP and load.py not at root")
+                    
+                    # Try to find directory with load.py
                     plugin_source_dir = None
-                    for subdir in subdirs:
-                        if os.path.exists(os.path.join(extracted_plugin_dir, subdir, "load.py")):
-                            plugin_source_dir = os.path.join(extracted_plugin_dir, subdir)
+                    for zip_dir in zip_dirs:
+                        check_path = os.path.join(tmp_dir, zip_dir, "load.py")
+                        if os.path.exists(check_path):
+                            plugin_source_dir = os.path.join(tmp_dir, zip_dir)
+                            self._logger.debug(f"Found plugin files in: {zip_dir}")
                             break
                     
                     if not plugin_source_dir:
-                        raise ValueError("Could not find plugin files (load.py) in extracted ZIP")
-                    
-                    self._logger.debug(f"Plugin files found in subdirectory: {plugin_source_dir}")
+                        raise ValueError(f"Could not find load.py in extracted ZIP")
                 
                 self._logger.debug(f"Plugin source directory: {plugin_source_dir}")
                 
@@ -354,9 +346,10 @@ class UpdateInfo:
                     self._logger.info(f"Backing up current version: {live_file_dir} -> {backup_dir}")
                     shutil.move(live_file_dir, backup_dir)
                     
-                    # Move new version to live location
+                    # Copy new version to live location
                     self._logger.info(f"Installing new version: {plugin_source_dir} -> {live_file_dir}")
-                    shutil.move(plugin_source_dir, live_file_dir)
+                    shutil.copytree(plugin_source_dir, live_file_dir, 
+                                   ignore=shutil.ignore_patterns('update.zip', '*.pyc', '__pycache__'))
                     
                     # Success! Clean up backup
                     self._logger.info("Update successful, removing backup")

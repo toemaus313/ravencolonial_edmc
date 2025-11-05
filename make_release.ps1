@@ -88,7 +88,7 @@ if (Test-Path $zipFileName) {
 }
 
 if (-not $DryRun) {
-    # Create temp directory structure
+    # Create temp directory structure with subdirectory (for backward compatibility)
     Write-Info "Creating temporary directory structure..."
     $targetDir = Join-Path $tempDir $pluginFolderName
     if (Test-Path $tempDir) {
@@ -130,7 +130,7 @@ if (-not $DryRun) {
         }
     }
 
-    # Create zip file
+    # Create zip file (with subdirectory for backward compatibility)
     Write-Info ""
     Write-Info "Creating zip archive..."
     Compress-Archive -Path (Join-Path $tempDir "*") -DestinationPath $zipFileName -Force
