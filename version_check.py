@@ -16,10 +16,23 @@ from typing import Optional
 import requests
 
 # GitHub API endpoint for releases
-RELEASES_URL = "https://api.github.com/repos/toemaus313/ravencolonial_edmc/releases/latest"
+RELEASES_URL = "https://api.github.com/repos/toemaus313/ravencolonial_edmc/releases"
 
 
-def compare_versions(current: str, latest: str) -> bool:
+def safe_remove_backup(backup_dir, logger):
+    """Safely remove backup directory, handling symbolic links"""
+    if os.path.exists(backup_dir):
+        if os.path.islink(backup_dir):
+            os.unlink(backup_dir)  # Remove symbolic link
+            if logger:
+                logger.debug(f"Removed symbolic link backup: {backup_dir}")
+        elif os.path.isdir(backup_dir):
+            shutil.rmtree(backup_dir)  # Remove directory
+            if logger:
+                logger.debug(f"Removed directory backup: {backup_dir}")
+
+
+def compare_versions(current: str, latest: str, logger=None) -> bool:
     """
     Compare version strings to see if latest is newer than current.
     Uses simple semantic versioning comparison (major.minor.patch).
@@ -33,13 +46,72 @@ def compare_versions(current: str, latest: str) -> bool:
         current = current.lstrip('v')
         latest = latest.lstrip('v')
         
+        # Extract numeric parts and check for pre-release suffixes
+        def parse_version(version: str):
+            parts = version.split('.')
+            numeric_parts = []
+            is_prerelease = False
+            
+            for part in parts:
+                # Extract only the leading digits from each part
+                numeric_part = ''
+                suffix_part = ''
+                digit_collection_complete = False
+                
+                for char in part:
+                    if char.isdigit() and not digit_collection_complete:
+                        numeric_part += char
+                    else:
+                        digit_collection_complete = True
+                        suffix_part += char.lower()
+                
+                if numeric_part:
+                    numeric_parts.append(numeric_part)
+                    # Check if this part has a pre-release suffix
+                    if logger:
+                        logger.debug(f"Checking part '{part}' - numeric: '{numeric_part}', suffix: '{suffix_part}'")
+                    if any(suffix in suffix_part for suffix in ['alpha', 'beta', 'rc', 'pre']):
+                        is_prerelease = True
+                        if logger:
+                            logger.debug(f"Found prerelease suffix in '{suffix_part}'")
+            
+            return numeric_parts, is_prerelease
+        
+        current_numeric, current_is_prerelease = parse_version(current)
+        latest_numeric, latest_is_prerelease = parse_version(latest)
+        
+        if logger:
+            logger.debug(f"Parsed versions - Current: {current_numeric} (prerelease: {current_is_prerelease}), Latest: {latest_numeric} (prerelease: {latest_is_prerelease})")
+        
         # Parse version strings into tuples of integers
         # e.g., "1.5.2" becomes (1, 5, 2)
-        current_parts = tuple(int(x) for x in current.split('.'))
-        latest_parts = tuple(int(x) for x in latest.split('.'))
+        current_parts = tuple(int(x) for x in current_numeric[:3])
+        latest_parts = tuple(int(x) for x in latest_numeric[:3])
         
-        # Python compares tuples element by element
-        return latest_parts > current_parts
+        if logger:
+            logger.debug(f"Version tuples - Current: {current_parts}, Latest: {latest_parts}")
+        
+        # Compare numeric versions
+        if latest_parts > current_parts:
+            if logger:
+                logger.debug(f"Latest is newer numerically: {latest_parts} > {current_parts}")
+            return True
+        elif latest_parts < current_parts:
+            if logger:
+                logger.debug(f"Latest is older numerically: {latest_parts} < {current_parts}")
+            return False
+        else:
+            # Same numeric version - stable release is newer than prerelease
+            if logger:
+                logger.debug(f"Same numeric version, checking prerelease status - Latest prerelease: {latest_is_prerelease}, Current prerelease: {current_is_prerelease}")
+            if not latest_is_prerelease and current_is_prerelease:
+                if logger:
+                    logger.debug(f"Stable release is newer than prerelease")
+                return True
+            if logger:
+                logger.debug(f"No update needed")
+            return False
+            
     except (ValueError, AttributeError) as e:
         # If parsing fails, assume no update
         return False
@@ -92,37 +164,51 @@ class UpdateInfo:
                 self._logger.warning(f"GitHub API returned status {response.status_code}")
                 return None
             
-            release = response.json()
-            tag = release.get('tag_name', '')
+            releases = response.json()
             
-            if not tag:
-                self._logger.warning("No tag_name in release response")
-                return None
+            # Find the latest suitable release
+            suitable_release = None
+            for release in releases:
+                tag = release.get('tag_name', '')
+                
+                if not tag:
+                    continue
+                
+                # Check if it's a pre-release
+                if release.get('prerelease', False):
+                    if not self._beta:
+                        self._logger.debug(f"Skipping pre-release {tag} (pre-releases disabled)")
+                        continue
+                    else:
+                        self._logger.debug(f"Considering pre-release {tag} (pre-releases enabled)")
+                
+                # Find the plugin ZIP in assets
+                assets = release.get('assets', [])
+                asset_url: Optional[str] = None
+                
+                for asset in assets:
+                    asset_name = asset.get('name', '')
+                    # Look for ZIP file matching pattern: Ravencolonial-EDMC-vX.Y.Z.zip
+                    if asset_name.endswith('.zip') and tag.lstrip('v') in asset_name:
+                        asset_url = asset.get('browser_download_url')
+                        self._logger.debug(f"Found asset: {asset_name} -> {asset_url}")
+                        break
+                
+                if not asset_url:
+                    self._logger.warning(f"No ZIP asset found for release {tag}")
+                    continue
+                
+                # This is a suitable release
+                suitable_release = release
+                break
             
-            # Check if it's a pre-release
-            if release.get('prerelease', False):
-                if not self._beta:
-                    self._logger.debug(f"Skipping pre-release {tag} (pre-releases disabled)")
-                    return None
-            
-            # Find the plugin ZIP in assets
-            assets = release.get('assets', [])
-            asset_url: Optional[str] = None
-            
-            for asset in assets:
-                asset_name = asset.get('name', '')
-                # Look for ZIP file matching pattern: Ravencolonial-EDMC-vX.Y.Z.zip
-                if asset_name.endswith('.zip') and tag.lstrip('v') in asset_name:
-                    asset_url = asset.get('browser_download_url')
-                    self._logger.debug(f"Found asset: {asset_name} -> {asset_url}")
-                    break
-            
-            if not asset_url:
-                self._logger.warning(f"No ZIP asset found for release {tag}")
+            if not suitable_release:
+                self._logger.info("No suitable release found")
                 return None
             
             # Get the HTML URL for the release page
-            html_url = release.get('html_url', f"https://github.com/toemaus313/ravencolonial_edmc/releases/tag/{tag}")
+            tag = suitable_release.get('tag_name', '')
+            html_url = suitable_release.get('html_url', f"https://github.com/toemaus313/ravencolonial_edmc/releases/tag/{tag}")
             
             self._data = UpdateInfo.Data(tag, html_url, asset_url)
             self._logger.info(f"Found release: {tag}")
@@ -145,7 +231,7 @@ class UpdateInfo:
             current_ver = CURRENT_VERSION()
             remote_ver = self._data.tag_name
             
-            is_outdated = compare_versions(current_ver, remote_ver)
+            is_outdated = compare_versions(current_ver, remote_ver, self._logger)
             self._logger.debug(f"Version comparison: {current_ver} vs {remote_ver} = outdated: {is_outdated}")
             return is_outdated
             
@@ -205,7 +291,8 @@ class UpdateInfo:
                 os.remove(zip_path)
                 
                 # Find the plugin folder inside the extracted content
-                # Should be: Ravencolonial-EDMC/
+                # The ZIP should extract to: Ravencolonial-EDMC-vX.Y.Z/
+                # containing the plugin files directly
                 zip_dirs = [
                     f for f in os.listdir(tmp_dir)
                     if os.path.isdir(os.path.join(tmp_dir, f))
@@ -217,7 +304,33 @@ class UpdateInfo:
                     )
                 
                 extracted_plugin_dir = os.path.join(tmp_dir, zip_dirs[0])
-                self._logger.debug(f"Plugin folder: {extracted_plugin_dir}")
+                self._logger.debug(f"Extracted folder: {extracted_plugin_dir}")
+                
+                # Check if this folder contains load.py (indicating it's the plugin folder)
+                # or if it contains a subdirectory with the plugin files
+                load_py_path = os.path.join(extracted_plugin_dir, "load.py")
+                if os.path.exists(load_py_path):
+                    # Plugin files are directly in this folder
+                    plugin_source_dir = extracted_plugin_dir
+                    self._logger.debug(f"Plugin files found directly in: {plugin_source_dir}")
+                else:
+                    # Look for a subdirectory that contains load.py
+                    subdirs = [
+                        f for f in os.listdir(extracted_plugin_dir)
+                        if os.path.isdir(os.path.join(extracted_plugin_dir, f))
+                    ]
+                    plugin_source_dir = None
+                    for subdir in subdirs:
+                        if os.path.exists(os.path.join(extracted_plugin_dir, subdir, "load.py")):
+                            plugin_source_dir = os.path.join(extracted_plugin_dir, subdir)
+                            break
+                    
+                    if not plugin_source_dir:
+                        raise ValueError("Could not find plugin files (load.py) in extracted ZIP")
+                    
+                    self._logger.debug(f"Plugin files found in subdirectory: {plugin_source_dir}")
+                
+                self._logger.debug(f"Plugin source directory: {plugin_source_dir}")
                 
                 # Get current plugin directory (parent of this file)
                 live_file_dir = os.path.dirname(os.path.abspath(__file__))
@@ -234,9 +347,7 @@ class UpdateInfo:
                 )
                 
                 # Clean up any existing backup with same name
-                if os.path.exists(backup_dir):
-                    self._logger.warning(f"Removing existing backup: {backup_dir}")
-                    shutil.rmtree(backup_dir)
+                safe_remove_backup(backup_dir, self._logger)
                 
                 try:
                     # Move current version to backup
@@ -244,12 +355,12 @@ class UpdateInfo:
                     shutil.move(live_file_dir, backup_dir)
                     
                     # Move new version to live location
-                    self._logger.info(f"Installing new version: {extracted_plugin_dir} -> {live_file_dir}")
-                    shutil.move(extracted_plugin_dir, live_file_dir)
+                    self._logger.info(f"Installing new version: {plugin_source_dir} -> {live_file_dir}")
+                    shutil.move(plugin_source_dir, live_file_dir)
                     
                     # Success! Clean up backup
                     self._logger.info("Update successful, removing backup")
-                    shutil.rmtree(backup_dir)
+                    safe_remove_backup(backup_dir, self._logger)
                     
                 except Exception as ex:
                     # Rollback on failure
