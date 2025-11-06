@@ -33,6 +33,7 @@ class FleetCarrierHandler:
         """
         self.api_client = api_client
         self.linked_fcs: Dict[int, Dict[str, Any]] = {}  # marketId -> FC data
+        self.callsign_to_market_id: Dict[str, int] = {}  # callsign -> marketId mapping
         self.current_station_type = None
         self.current_market_id = None
         self.stealth_mode = False
@@ -67,6 +68,15 @@ class FleetCarrierHandler:
             
             # Store as dictionary by marketId for easy lookup
             self.linked_fcs = {fc['marketId']: fc for fc in all_fcs}
+            
+            # Build callsign-to-marketId mapping for CAPI data matching
+            # The 'name' field in FC data should be the callsign (e.g., "ABC-123")
+            self.callsign_to_market_id = {}
+            for market_id, fc in self.linked_fcs.items():
+                callsign = fc.get('name', '').upper()  # Normalize to uppercase
+                if callsign:
+                    self.callsign_to_market_id[callsign] = market_id
+                    logger.debug(f"Mapped callsign {callsign} to marketId {market_id}")
             
             if len(self.linked_fcs) == 0:
                 logger.info(f"No Fleet Carriers linked for commander {cmdr_name}. To link a Fleet Carrier, visit Ravencolonial.com")
@@ -381,6 +391,25 @@ class FleetCarrierHandler:
         except Exception as e:
             logger.error(f"Exception replacing FC cargo: {e}", exc_info=True)
             return False
+    
+    def get_market_id_by_callsign(self, callsign: str) -> Optional[int]:
+        """
+        Look up the market ID for a Fleet Carrier by its callsign.
+        Used to match CAPI data to the correct FC.
+        
+        :param callsign: Fleet Carrier callsign (e.g., "ABC-123")
+        :return: Market ID if found, None otherwise
+        """
+        # Normalize callsign to uppercase for consistent lookup
+        normalized_callsign = callsign.upper()
+        market_id = self.callsign_to_market_id.get(normalized_callsign)
+        
+        if market_id:
+            logger.debug(f"Found marketId {market_id} for callsign {callsign}")
+        else:
+            logger.warning(f"No marketId found for callsign {callsign}. Known callsigns: {list(self.callsign_to_market_id.keys())}")
+        
+        return market_id
     
     def get_linked_fc_summary(self) -> str:
         """Get a summary of linked Fleet Carriers"""

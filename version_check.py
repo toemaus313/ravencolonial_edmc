@@ -166,8 +166,8 @@ class UpdateInfo:
             
             releases = response.json()
             
-            # Find the latest suitable release
-            suitable_release = None
+            # Find all suitable releases and pick the highest version
+            suitable_releases = []  # List of tuples: (release, asset_url)
             for release in releases:
                 tag = release.get('tag_name', '')
                 
@@ -198,19 +198,44 @@ class UpdateInfo:
                     self._logger.warning(f"No ZIP asset found for release {tag}")
                     continue
                 
-                # This is a suitable release
-                suitable_release = release
-                break
+                # This is a suitable release - store with asset URL
+                suitable_releases.append((release, asset_url))
+            
+            if not suitable_releases:
+                self._logger.info("No suitable releases found")
+                return None
+            
+            # Pick the highest version from suitable releases
+            suitable_release = None
+            selected_asset_url = None
+            highest_version = None
+            
+            for release, asset_url in suitable_releases:
+                tag = release.get('tag_name', '').lstrip('v')
+                
+                if highest_version is None:
+                    highest_version = tag
+                    suitable_release = release
+                    selected_asset_url = asset_url
+                else:
+                    # Compare versions
+                    if compare_versions(highest_version, tag, self._logger):
+                        highest_version = tag
+                        suitable_release = release
+                        selected_asset_url = asset_url
+                        self._logger.debug(f"Found higher version: {tag}")
+            
+            self._logger.debug(f"Selected highest version: {highest_version}")
             
             if not suitable_release:
                 self._logger.info("No suitable release found")
                 return None
             
-            # Get the HTML URL for the release page
+            # Get the HTML URL for the selected release
             tag = suitable_release.get('tag_name', '')
             html_url = suitable_release.get('html_url', f"https://github.com/toemaus313/ravencolonial_edmc/releases/tag/{tag}")
             
-            self._data = UpdateInfo.Data(tag, html_url, asset_url)
+            self._data = UpdateInfo.Data(tag, html_url, selected_asset_url)
             self._logger.info(f"Found release: {tag}")
             return self._data
             

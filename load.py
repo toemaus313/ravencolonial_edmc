@@ -36,7 +36,7 @@ import version_check
 
 # Plugin metadata
 plugin_name = os.path.basename(os.path.dirname(__file__))
-plugin_version = "1.5.6"
+plugin_version = "1.5.7"
 
 # Setup logging per EDMC documentation
 # A Logger is used per 'found' plugin to make it easy to include the plugin's
@@ -1029,16 +1029,14 @@ def capi_fleetcarrier(data: CAPIData) -> Optional[str]:
         callsign = data['name']['callsign']
         logger.info(f"Received CAPI data for Fleet Carrier: {callsign}")
         
-        # Get market ID from current state (CAPI doesn't provide market ID directly)
-        market_id = this.fc_handler.current_market_id
+        # Look up the market ID using the callsign from CAPI data
+        # This ensures we update the correct FC even if the player is docked at a different one
+        market_id = this.fc_handler.get_market_id_by_callsign(callsign)
         if not market_id:
-            logger.warning("No current market ID - cannot process CAPI FC data")
+            logger.warning(f"Cannot find market ID for FC callsign {callsign} - FC may not be linked")
             return None
         
-        # Check if this FC is linked
-        if market_id not in this.fc_handler.linked_fcs:
-            logger.debug(f"CAPI data for unlinked FC {callsign} ({market_id}) - ignoring")
-            return None
+        logger.info(f"Matched CAPI callsign {callsign} to marketId {market_id}")
         
         # Check stealth mode
         if this.fc_handler.stealth_mode:

@@ -14,7 +14,7 @@ class PluginConfig:
     
     # Plugin metadata
     NAME = os.path.basename(os.path.dirname(os.path.dirname(__file__)))
-    VERSION = "1.5.6"
+    VERSION = "1.5.7"
     
     # API configuration
     DEFAULT_API_BASE = "https://ravencolonial100-awcbdvabgze4c5cq.canadacentral-01.azurewebsites.net"

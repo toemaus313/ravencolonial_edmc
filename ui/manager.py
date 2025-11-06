@@ -49,13 +49,12 @@ class UIManager:
         self.main_controls_frame = tk.Frame(frame)
         self.main_controls_frame.pack(side=tk.TOP, fill=tk.X)
         
-        # Status label
-        self.status_label = tk.Label(self.main_controls_frame, text="Ravencolonial: Ready")
-        self.status_label.pack(side=tk.LEFT, padx=5)
-        self.plugin.status_label = self.status_label
+        # Button row frame (contains button and project link)
+        button_row = tk.Frame(self.main_controls_frame)
+        button_row.pack(side=tk.TOP, fill=tk.X)
         
         # Project link label (shows when project exists)
-        self.project_link_label = tk.Label(self.main_controls_frame, text="", cursor="hand2", fg='blue')
+        self.project_link_label = tk.Label(button_row, text="", cursor="hand2", fg='blue')
         self.project_link_label.pack(side=tk.LEFT, padx=5)
         self.project_link_label.bind("<Button-1>", lambda e: self._open_project_link())
         self.plugin.project_link_label = self.project_link_label
@@ -63,13 +62,22 @@ class UIManager:
         
         # Create project button
         self.create_button = tk.Button(
-            self.main_controls_frame, 
+            button_row, 
             text="Create Project (Dock First)",
             command=lambda: self._open_create_dialog(parent),
             state=tk.DISABLED
         )
         self.create_button.pack(side=tk.LEFT, padx=5)
         self.plugin.create_button = self.create_button
+        
+        # Status row frame (contains status label)
+        status_row = tk.Frame(self.main_controls_frame)
+        status_row.pack(side=tk.TOP, fill=tk.X)
+        
+        # Status label
+        self.status_label = tk.Label(status_row, text="Ravencolonial: Ready")
+        self.status_label.pack(side=tk.LEFT, padx=5)
+        self.plugin.status_label = self.status_label
         
         # Check for updates after a short delay to allow UI to settle
         frame.after(3000, self._check_and_show_update_notification)
