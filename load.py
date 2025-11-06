@@ -33,10 +33,11 @@ from plugin_config import PluginConfig
 import construction_completion
 import fleet_carrier_handler
 import version_check
+import d2d_logger
 
 # Plugin metadata
 plugin_name = os.path.basename(os.path.dirname(__file__))
-plugin_version = "1.5.7"
+plugin_version = "1.5.8-beta1"
 
 # Setup logging per EDMC documentation
 # A Logger is used per 'found' plugin to make it easy to include the plugin's
@@ -131,6 +132,10 @@ class RavencolonialPlugin:
         )
         self.update_available = False
         self.update_dismissed = False
+        
+        # D2D (Dock-to-Dock) time logger
+        self.d2d_logger = d2d_logger.D2DLogger()
+        self.d2d_logger.load_last_docked_time()
         
     def _api_worker(self):
         """Background worker thread for API calls"""
@@ -911,6 +916,11 @@ def journal_entry(
         this.is_construction_ship = 'ColonisationShip' in station_name
         logger.debug(f"Docked details - StationType: {this.station_type}, is_construction_ship: {this.is_construction_ship}")
         
+        # Log docked event to D2D CSV
+        timestamp = entry.get('timestamp', '')
+        if timestamp:
+            this.d2d_logger.log_docked_event(timestamp, station_name, system)
+        
         # Handle Fleet Carrier docking
         this.fc_handler.handle_docked_event(entry)
         
@@ -941,6 +951,12 @@ def journal_entry(
             station_name = entry.get('StationName', '')
             this.is_construction_ship = 'ColonisationShip' in station_name
             logger.info(f"Location event - docked at {station}, StationType: {this.station_type}, StationName: {station_name}, is_construction_ship: {this.is_construction_ship}")
+            
+            # Log docked event to D2D CSV if we haven't already logged this docking
+            timestamp = entry.get('timestamp', '')
+            if timestamp and station_name:
+                this.d2d_logger.log_docked_event(timestamp, station_name, system)
+            
             this.update_create_button()
         else:
             this.is_docked = False
