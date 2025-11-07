@@ -37,7 +37,7 @@ import d2d_logger
 
 # Plugin metadata
 plugin_name = os.path.basename(os.path.dirname(__file__))
-plugin_version = "1.5.8-beta1"
+plugin_version = "1.5.8"
 
 # Setup logging per EDMC documentation
 # A Logger is used per 'found' plugin to make it easy to include the plugin's
